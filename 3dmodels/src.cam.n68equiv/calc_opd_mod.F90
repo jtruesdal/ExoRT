@@ -14,8 +14,9 @@ module calc_opd_mod
                               SHR_CONST_RGAS, SHR_CONST_AVOGAD, &
                               SHR_CONST_STEBOL, &
                               SHR_CONST_BOLTZ, &
-                              SHR_CONST_RHOFW, SHR_CONST_RHOICE, &
-                              SHR_CONST_LOSCHMIDT
+                              SHR_CONST_RHOFW, SHR_CONST_RHOICE
+!!                              SHR_CONST_RHOFW, SHR_CONST_RHOICE, &
+!!                              SHR_CONST_LOSCHMIDT
   use physconst,        only: mwn2, mwco2, mwch4, mwc2h6, mwh2o, mwo2, mwh2, mwo3, mwdry, cpair, epsilo
   use radgrid
   use rad_interp_mod

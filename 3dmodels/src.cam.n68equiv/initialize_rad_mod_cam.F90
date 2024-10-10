@@ -7,7 +7,8 @@ module initialize_rad_mod_cam
 !
 
 use kabs
-use exoplanet_mod, only: solar_file => exo_solar_file
+!!use exoplanet_mod, only: solar_file => exo_solar_file
+use exoplanet_mod, only: solar_file
 use cloud
 use radgrid
 use spmd_utils,       only: masterproc
@@ -54,6 +55,24 @@ contains
     use cam_pio_utils, only: cam_pio_openfile
     use pio,  only: pio_inq_varid, pio_get_var, pio_closefile, pio_nowrite,  &
               file_desc_t, var_desc_t
+    use radiation, only: &
+    k_h2o_file,          &
+    k_co2_file,          &
+    k_o2_file,           &
+    k_o3_file,           &
+    k_ch4_file,          &
+    k_c2h6_file,         &
+    kh2o_mtckd_file,     &
+    kn2n2cia_file,       &
+    kn2h2cia_file,       &
+    kh2h2cia_file,       &
+    kco2co2cia_lw_file,  &
+    kco2co2cia_sw_file,  &
+    kco2h2cia_file,      &
+    kco2ch4cia_file,     &
+    ko2o2cia_file,       &
+    ko2n2cia_file,       &
+    ko2co2cia_file
 
 
     implicit none
@@ -87,42 +106,43 @@ contains
 
     ! Load K coefficients
     filename = trim(exort_rootdir)//trim(dirk_h2o)//trim(k_h2o_file)
-    call getfil(filename, locfn, 0)
+!jt    call getfil(filename, locfn, 0)
+    call getfil(trim(k_h2o_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'data',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, k_h2o)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirk_co2)//trim(k_co2_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(k_co2_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'data',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, k_co2)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirk_ch4)//trim(k_ch4_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(k_ch4_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'data',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, k_ch4)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirk_c2h6)//trim(k_c2h6_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(k_c2h6_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'data',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, k_c2h6)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirk_o3)//trim(k_o3_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(k_o3_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'data',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, k_o3)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirk_o2)//trim(k_o2_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(k_o2_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'data',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, k_o2)
@@ -130,14 +150,14 @@ contains
 
     !! Load mtckd h2o continuum
     filename = trim(exort_rootdir)//trim(dirct)//trim(kh2o_mtckd_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kh2o_mtckd_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'KSELF',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kh2oself_mtckd)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirct)//trim(kh2o_mtckd_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kh2o_mtckd_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'KFRGN',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kh2ofrgn_mtckd)
@@ -146,7 +166,7 @@ contains
 
     ! Load K coefficients, for n2n2 continuum
     filename = trim(exort_rootdir)//trim(dirci)//trim(kn2n2cia_file )
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kn2n2cia_file ), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kn2n2)
@@ -154,7 +174,7 @@ contains
 
     ! Load K coefficients, for n2h2 continuum
     filename = trim(exort_rootdir)//trim(dirci)//trim(kn2h2cia_file )
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kn2h2cia_file ), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kn2h2)
@@ -162,7 +182,7 @@ contains
 
     ! Load K coefficients, for h2h2 continuum
     filename = trim(exort_rootdir)//trim(dirci)//trim(kh2h2cia_file )
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kh2h2cia_file ), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kh2h2)
@@ -170,7 +190,7 @@ contains
 
     ! Load K coefficients, for co2co2 lw continuum
     filename = trim(exort_rootdir)//trim(dirci)//trim(kco2co2cia_lw_file )
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kco2co2cia_lw_file ), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kco2co2_lw)
@@ -178,7 +198,7 @@ contains
 
     ! Load K coefficients, for co2co2 sw continuum
     filename = trim(exort_rootdir)//trim(dirci)//trim(kco2co2cia_sw_file )
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kco2co2cia_sw_file ), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kco2co2_sw)
@@ -186,7 +206,7 @@ contains
 
     ! Load K coefficients, for co2h2 continuum
     filename = trim(exort_rootdir)//trim(dirci)//trim(kco2h2cia_file )
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kco2h2cia_file ), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kco2h2)
@@ -194,28 +214,28 @@ contains
 
     ! Load K coefficients, for co2h4 continuum
     filename = trim(exort_rootdir)//trim(dirci)//trim(kco2ch4cia_file )
-    call getfil(filename, locfn, 0)
+    call getfil(trim(kco2ch4cia_file ), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, kco2ch4)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirci)//trim(ko2o2cia_file )
-    call getfil(filename, locfn, 0)
+    call getfil(ko2o2cia_file, locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, ko2o2)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirci)//trim(ko2n2cia_file )
-    call getfil(filename, locfn, 0)
+    call getfil(ko2n2cia_file, locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, ko2n2)
     call pio_closefile(ncid)
 
     filename = trim(exort_rootdir)//trim(dirci)//trim(ko2co2cia_file )
-    call getfil(filename, locfn, 0)
+    call getfil(ko2co2cia_file, locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
     ierr =  pio_inq_varid(ncid, 'sigma',   keff_id)
     ierr =  pio_get_var(ncid, keff_id, ko2co2)
@@ -273,6 +293,8 @@ contains
     use cam_pio_utils, only: cam_pio_openfile
     use pio,  only: pio_inq_varid, pio_get_var, pio_closefile, pio_nowrite,  &
                     file_desc_t, var_desc_t, pio_inq_dimid, pio_inquire_dimension
+    use radiation, only: &
+    solar_file
 
     implicit none
     include 'netcdf.inc'
@@ -327,6 +349,9 @@ contains
     use cam_pio_utils, only: cam_pio_openfile
     use pio,  only: pio_inq_varid, pio_get_var, pio_closefile, pio_nowrite,  &
                     file_desc_t, var_desc_t, pio_inq_dimid, pio_inquire_dimension
+    use radiation, only:  &
+    cldoptsL_file,       &
+    cldoptsI_file
 
     implicit none
     include 'netcdf.inc'
@@ -359,7 +384,7 @@ contains
 
     ! Load K water cloud optics file
     filename = trim(exort_rootdir)//trim(dircld)//trim(cldoptsL_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(cldoptsL_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
 !!    ierr =  pio_inq_dimid(ncid, 'rel_bins',   bin_id)
 !!    ierr =  pio_inquire_dimension(ncid, bin_id, len=ncldopt_lbins)
@@ -374,7 +399,7 @@ contains
 
     ! Load ice cloud optics file
     filename = trim(exort_rootdir)//trim(dircld)//trim(cldoptsI_file)
-    call getfil(filename, locfn, 0)
+    call getfil(trim(cldoptsI_file), locfn, 0)
     call cam_pio_openfile(ncid, locfn, PIO_NOWRITE)
 !!    ierr =  pio_inq_dimid(ncid, 'rei_bins',   bin_id)
 !!    ierr =  pio_inquire_dimension(ncid, bin_id, len=ncldopt_ibins)

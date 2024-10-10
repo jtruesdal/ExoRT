@@ -18,9 +18,10 @@ module exo_radiation_mod
                               SHR_CONST_RGAS, SHR_CONST_AVOGAD, &
                               SHR_CONST_STEBOL, SHR_CONST_CDAY, &
                               SHR_CONST_BOLTZ, &
-                              SHR_CONST_RHOFW, SHR_CONST_RHOICE, &
-			      SHR_CONST_LOSCHMIDT
-  use physconst,        only: scon,mwn2, mwco2, mwch4, mwc2h6, mwh2o, mwo2, mwh2, mwdry, cpair, cappa
+                              SHR_CONST_RHOFW, SHR_CONST_RHOICE
+!!                              SHR_CONST_RHOFW, SHR_CONST_RHOICE, &
+!!                              SHR_CONST_LOSCHMIDT
+  use physconst,        only: mwdry, cpair
   use ppgrid            ! pver, pverp is here
   use pmgrid            ! ?masterproc is here?
   use spmd_utils,       only: masterproc
@@ -966,10 +967,12 @@ contains
 
       ! If temperature out of planck table range
       if ( (sfc_tempk*tpft_finc > tpft_end) .and. (masterproc) ) then
-        write(*,*) "WARNING: surface temperature exceeds planck table maximum", tint(k),k
+!jt        write(*,*) "WARNING: surface temperature exceeds planck table maximum", tint(k),k
+        write(*,*) "WARNING: surface temperature exceeds planck table maximum", tpft_end
       endif
       if ( (sfc_tempk*tpft_finc < tpft_beg) .and. (masterproc) ) then
-        write(*,*) "WARNING: surface temperature below planck table minimum", tint(k),k
+!jt        write(*,*) "WARNING: surface temperature below planck table minimum", tint(k),k
+        write(*,*) "WARNING: surface temperature below planck table minimum", tpft_beg
       endif
 
       ! Interpolate between table values:
