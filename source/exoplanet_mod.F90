@@ -15,7 +15,7 @@ module exoplanet_mod
   character(len=256), parameter :: dirsol = 'data/solar/'
 
   ! Radiation Spectral Band Optimization
-  logical, parameter :: do_exo_rt_optimize_bands = .true.
+  logical,public :: do_exo_rt_optimize_bands = .true.
   real(r8), parameter :: Tmax = 400.          !! Maximum expected temperature for thermal band optimization
   real(r8), parameter :: swFluxLimit = 0.999  !! Fraction of stellar flux captured in bands, rescaled
   real(r8), parameter :: lwFluxLimit = 0.999  !! Fraction of thermal flux captured in bands, not rescaled
@@ -55,29 +55,29 @@ module exoplanet_mod
    !! ========================================================== !!
    !! ====================== RUN OPTIONS ======================= !!
    !! ========================================================== !!
-   logical, public, parameter :: do_exo_atmconst = .true.        !! Read gas constituents of atmosphere from this file
+   logical, public            :: do_exo_atmconst = .true.        !! Read gas constituents of atmosphere from this file
                                                                  !! Overrides ghg namelist options
-   logical, public, parameter :: do_exo_rt = .true.              !! .true. = use correlated-k "exoplanet" RT
+   logical, public            :: do_exo_rt = .true.              !! .true. = use correlated-k "exoplanet" RT
                                                                 !! .false. = use CAM4 RT, refer elsewhere for operating
                                                                  !! (currently only works for true.  delete option?)
-   logical, public, parameter :: do_exo_synchronous = .false.    !! Toggle to synchronous rotation mode
+   logical, public            :: do_exo_synchronous = .false.    !! Toggle to synchronous rotation mode
                                                                  !! Eventually replace with better orbital computer
-   logical, public, parameter :: do_exo_rt_clearsky = .false.    !! Do parallel clearsky radiative calculation for exo rt
+   logical, public            :: do_exo_rt_clearsky = .false.    !! Do parallel clearsky radiative calculation for exo rt
                                                                  !! Slow, use sparingly
-   logical, public, parameter :: do_exo_rt_spectral = .false.    !! collect and output spectrally resolved radiative fluxes
+   logical, public            :: do_exo_rt_spectral = .false.    !! collect and output spectrally resolved radiative fluxes
                                                                  !!
-   integer, public, parameter :: exo_rad_step = 4 ! 4                !! freq. of radiation calc in time steps (positive)
+   integer, public            :: exo_rad_step = 1 ! 4                !! freq. of radiation calc in time steps (positive)
                                                                  !! or hours (negative).
-   logical, public, parameter :: do_carma_exort = .false.        !! Set to true only if running with the CARMA microphyiscs package
+   logical, public            :: do_carma_exort = .false.        !! Set to true only if running with the CARMA microphyiscs package
                                                                  !! and linking aerosol absorption to ExoRT
-   logical, public, parameter :: do_exo_gw = .false.             !! flag to turn on gravity waves.  Note, present gw wave parameterization
+   logical, public            :: do_exo_gw = .false.             !! flag to turn on gravity waves.  Note, present gw wave parameterization
                                                                  !! does not work for low pressure atmospheres.
-   logical, public, parameter :: do_exo_condense_co2 = .true.    !! flag to condense co2 on surface and in atmosphere
+   logical, public            :: do_exo_condense_co2 = .true.    !! flag to condense co2 on surface and in atmosphere
                                                                  !! Must add an advected constituent at build
                                                                  !! -nadv 4 (Q, CLDLIQ, CLDICE, CLDCO2)
-   logical, public, parameter :: do_exo_co2cld_rad = .true.      !! include CO2 cloud in radiative transfer calculation
+   logical, public            :: do_exo_co2cld_rad = .true.      !! include CO2 cloud in radiative transfer calculation
                                                                  !! false implies transparent clouds
-   logical, public, parameter :: do_exo_soilcp = .true.          !! use soil heat capacity and bulk density set here
+   logical, public            :: do_exo_soilcp = .true.          !! use soil heat capacity and bulk density set here
 
 
 
