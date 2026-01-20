@@ -10,13 +10,15 @@ module calc_opd_mod
 
   use shr_kind_mod,     only: r8 => shr_kind_r8
   use rayleigh_data
-  use shr_const_mod,    only: SHR_CONST_PI,SHR_CONST_PI, SHR_CONST_G, &
-                              SHR_CONST_RGAS, SHR_CONST_AVOGAD, &
+  use shr_const_mod,    only: SHR_CONST_PI, &
+                              SHR_CONST_RGAS, &
+                              SHR_CONST_AVOGAD, &
                               SHR_CONST_STEBOL, &
                               SHR_CONST_BOLTZ, &
                               SHR_CONST_RHOFW, SHR_CONST_RHOICE
 !!                              SHR_CONST_RHOFW, SHR_CONST_RHOICE, &
 !!                              SHR_CONST_LOSCHMIDT
+  use physconst,        only: gravit
   use physconst,        only: mwn2, mwco2, mwch4, mwc2h6, mwh2o, mwo2, mwh2, mwo3, mwdry, cpair, epsilo
   use radgrid
   use rad_interp_mod
@@ -29,7 +31,6 @@ module calc_opd_mod
 
   public :: calc_gasopd
   public :: calc_cldopd
-
 
 !============================================================================
 contains
@@ -225,6 +226,25 @@ contains
 
       ! Find pressure coordinates for k-coefficients
       pressure = log10(pmid(ik))       ! log pressure
+
+      !jt --- VACUUM SAFETY PATCH START ---
+      ! If we are below the opacity grid floor (vacuum), the physics is undefined.
+      ! Clamping forces "thick" atmosphere physics onto vacuum, causing crashes.
+      ! We set opacity to zero and skip calculation for this layer.
+      if (pressure < log10pgrid(1)) then
+          tau_gas(:,ik) = 0.0_r8
+          tau_ray(:,ik) = 0.0_r8
+
+          ! Optional: Print warning once per timestep if desired
+          ! if (masterproc .and. ik==2) write(6,*) "VACUUM SAFETY: Zeroing Opacity at P=", pmid(ik)
+
+          cycle ! Skip to next layer
+      endif
+      !jt --- VACUUM SAFETY PATCH END ---
+
+      ! find the reference pressure value, exit if pressure less than minimum of grid
+      p_ref_index = kc_npress          ! index of reference pressure, default is max
+      ! ... (Rest of loop) ...
       ! find the reference pressure value, exit if pressure less than minimum of grid
       p_ref_index = kc_npress          ! index of reference pressure, default is max
       do  ! for K coefficient data sets
@@ -299,191 +319,274 @@ contains
       !
       !===== MT_CKD =====!
 
-      ! For water vapor self continuum, find temperature index
-      ! find the reference temperature value, exit if temperature less than minimum of grid
-      t_ref_index_mtckd = kmtckd_ntemp  ! index of reference temperature
-      t_h2o_mtckd = temperature
-      do
-        if (t_ref_index_mtckd .lt. 1) exit                   ! exit if temperature less than minimum grid
-        if (t_h2o_mtckd .gt. tgrid_mtckd(kmtckd_ntemp)) then  ! temperature greater than grid max
-          t_h2o_mtckd = tgrid_mtckd(t_ref_index_mtckd)   ! set t to max grid value
-          exit                                              ! exit
+      ! --- DYNAMIC LIMIT CHECK START ---
+      ! We check the RAW 'temperature' and 'u_h2o' inputs.
+      ! 1. Is the layer wet enough to matter? (> 1.0e16 molecules/cm2)
+      !    The water vapor continuum calculation is disabled for column
+      !    densities below $1.0 \times 10^{16}$ molecules/cm². Based on the
+      !    maximum infrared continuum cross-section of
+      !         $\sim 10^{-21}$ cm²/molecule (Clough et al., 1989),
+      !    this threshold corresponds to an optical depth of $\tau < 10^{-5}$,
+      !    which is radiatively negligible.
+      ! 2. Is the temperature within the valid table range? (Min to Max)
+      !    If we are colder than tgrid_mtckd(1), we SKIP calculation entirely
+      !    to avoid the "clamping explosion"
+
+      if (u_h2o > 1.0e16_r8 .and. &
+        temperature >= tgrid_mtckd(1) .and. &
+        temperature <= tgrid_mtckd(kmtckd_ntemp)) then
+
+        ! ===  CLAMPING & INDEX FINDING LOGIC ===
+        ! For water vapor self continuum, find temperature index
+        ! find the reference temperature value, exit if temperature less than minimum of grid
+        t_ref_index_mtckd = kmtckd_ntemp  ! index of reference temperature
+        t_h2o_mtckd = temperature
+        do
+          if (t_ref_index_mtckd .lt. 1) exit                   ! exit if temperature less than minimum grid
+          if (t_h2o_mtckd .gt. tgrid_mtckd(kmtckd_ntemp)) then  ! temperature greater than grid max
+             t_h2o_mtckd = tgrid_mtckd(t_ref_index_mtckd)   ! set t to max grid value
+             exit                                              ! exit
+          endif
+          if ((tgrid_mtckd(t_ref_index_mtckd) .le. t_h2o_mtckd)) exit ! found reference temperature
+          t_ref_index_mtckd = t_ref_index_mtckd - 1                   ! increment reference temperature
+        enddo
+        ! if temperature less than minimum of grid, force reference to minimum grid value
+        ! force reference temperature for interpolation to minimum temperature in tgrid
+        if (t_ref_index_mtckd .lt. 1) then
+          t_ref_index_mtckd = 1
+          t_h2o_mtckd = tgrid_mtckd(t_ref_index_mtckd)
         endif
-        if ((tgrid_mtckd(t_ref_index_mtckd) .le. t_h2o_mtckd)) exit ! found reference temperature
-        t_ref_index_mtckd = t_ref_index_mtckd - 1                   ! increment reference temperature
-      enddo
-      ! if temperature less than minimum of grid, force reference to minimum grid value
-      ! force reference temperature for interpolation to minimum temperature in tgrid
-      if (t_ref_index_mtckd .lt. 1) then
-        t_ref_index_mtckd = 1
-        t_h2o_mtckd = tgrid_mtckd(t_ref_index_mtckd)
+
+        ! === LOOKUP & ACCUMULATION ===
+        itc=0
+        call interpH2Omtckd_ng(kh2oself_mtckd, t_h2o_mtckd, t_ref_index_mtckd, ans_h2os)
+        call interpH2Omtckd_ng(kh2ofrgn_mtckd, t_h2o_mtckd, t_ref_index_mtckd, ans_h2of)
+        !!  Do MT_CKD continuum
+        do iw = iwbeg,iwend     ! loop over bands
+          do ig=1, ngauss_pts(iw)
+            itc=itc+1
+            tau_gas(itc,ik) = tau_gas(itc,ik) + (ans_h2os(ig,iw)*amaH2O + ans_h2of(ig,iw)*amaFRGN) * u_h2o
+           enddo
+        enddo    ! close band loop
+
+      else
+
+        ! === SKIP LOGIC ===
+        ! If T < min table T or Dry, we do NOT calculate continuum.
+        ! But we MUST advance the 'itc' counter so the next section works.
+        itc=0
+        do iw = iwbeg,iwend
+          do ig=1, ngauss_pts(iw)
+            itc=itc+1
+            ! No addition to tau_gas
+           enddo
+        enddo
+
       endif
-
-      !!  Do MT_CKD continuum
-      itc=0
-      call interpH2Omtckd_ng(kh2oself_mtckd, t_h2o_mtckd, t_ref_index_mtckd, ans_h2os)
-      call interpH2Omtckd_ng(kh2ofrgn_mtckd, t_h2o_mtckd, t_ref_index_mtckd, ans_h2of)
-      do iw = iwbeg,iwend     ! loop over bands
-        do ig=1, ngauss_pts(iw)
-          itc=itc+1
-          tau_gas(itc,ik) = tau_gas(itc,ik) + (ans_h2os(ig,iw)*amaH2O + ans_h2of(ig,iw)*amaFRGN) * u_h2o
-         enddo
-      enddo    ! close band loop
-
 
       !
       !  Collision Induced Absorption
       !
       !!====  Calculate N2-N2 CIA  ====!!
       if (u_n2 .gt. 0) then
-        t_ref_index_n2n2 = kn2n2_ntemp
-        t_n2n2 = temperature
-        do
-          if (t_ref_index_n2n2 .lt. 1) exit                   ! exit if temperature less than minimum grid
-          if (t_n2n2 .gt. tgrid_n2n2(kn2n2_ntemp)) then  ! temperature greater than grid max
-            t_n2n2 = tgrid_n2n2(t_ref_index_n2n2)   ! set t to max grid value
-            exit                                              ! exit
-          endif
-          if ((tgrid_n2n2(t_ref_index_n2n2) .le. t_n2n2)) exit ! found reference temperature
-          t_ref_index_n2n2 = t_ref_index_n2n2 - 1                   ! increment reference temperature
-        enddo
-        ! if temperature less than minimum of grid, force reference to minimum grid value
-        ! force reference temperature for interpolation to minimum temperature in tgrid
-        if (t_ref_index_n2n2 .lt. 1) then
-          t_ref_index_n2n2 = 1
-          t_n2n2 = tgrid_n2n2(t_ref_index_n2n2)
-        endif
-        call interpN2N2cia(kn2n2, t_n2n2, t_ref_index_n2n2, ans_cia)
-        do iw=iwbeg,iwend      ! loop over bands
+         ! --- SAFETY CHECK ---
+         if (temperature >= tgrid_n2n2(1) .and. &
+              temperature <= tgrid_n2n2(kn2n2_ntemp)) then
+
+            t_ref_index_n2n2 = kn2n2_ntemp
+            t_n2n2 = temperature
+            do
+               if (t_ref_index_n2n2 .lt. 1) exit                   ! exit if temperature less than minimum grid
+               if (t_n2n2 .gt. tgrid_n2n2(kn2n2_ntemp)) then  ! temperature greater than grid max
+                  t_n2n2 = tgrid_n2n2(t_ref_index_n2n2)   ! set t to max grid value
+                  exit                                              ! exit
+               endif
+               if ((tgrid_n2n2(t_ref_index_n2n2) .le. t_n2n2)) exit ! found reference temperature
+               t_ref_index_n2n2 = t_ref_index_n2n2 - 1                   ! increment reference temperature
+            enddo
+            ! if temperature less than minimum of grid, force reference to minimum grid value
+            ! force reference temperature for interpolation to minimum temperature in tgrid
+            if (t_ref_index_n2n2 .lt. 1) then
+               t_ref_index_n2n2 = 1
+               t_n2n2 = tgrid_n2n2(t_ref_index_n2n2)
+            endif
+            call interpN2N2cia(kn2n2, t_n2n2, t_ref_index_n2n2, ans_cia)
+
+         else  ! Temperature out of bounds disable n2-n2 calc
+            ans_cia(:) = 0.0_r8
+         endif
+         ! Apply Result (Safe because ans_cia is 0.0 if skipped)
+         do iw=iwbeg,iwend      ! loop over bands
           tau_n2n2_cia(iw,ik) = ans_cia(iw) * amaN2 * amaN2 * pathlength(ik)
           !!!write(*,*) "N2-N2 CIA",iw, ans, n2vmr, tau_n2n2cia(iw,ik)
         enddo
       endif
 
-
       !!====  Calculate H2-H2 CIA  ====!!
       if (u_h2 .gt. 0) then
-        t_ref_index_h2h2 = kh2h2_ntemp
-        t_h2h2 = temperature
-        do
-          if (t_ref_index_h2h2 .lt. 1) exit                   ! exit if temperature less than minimum grid
-          if (t_h2h2 .gt. tgrid_h2h2(kh2h2_ntemp)) then  ! temperature greater than grid max
-            t_h2h2 = tgrid_h2h2(t_ref_index_h2h2)   ! set t to max grid value
-            exit                                              ! exit
-          endif
-          if ((tgrid_h2h2(t_ref_index_h2h2) .le. t_h2h2)) exit ! found reference temperature
-          t_ref_index_h2h2 = t_ref_index_h2h2 - 1                   ! increment reference temperature
-        enddo
-        ! if temperature less than minimum of grid, force reference to minimum grid value
-        ! force reference temperature for interpolation to minimum temperature in tgrid
-        if (t_ref_index_h2h2 .lt. 1) then
-          t_ref_index_h2h2 = 1
-          t_h2h2 = tgrid_h2h2(t_ref_index_h2h2)
-        endif
-        call interpH2H2cia(kh2h2, t_h2h2, t_ref_index_h2h2, ans_cia)
-        do iw=iwbeg,iwend      ! loop over bands
-           tau_h2h2_cia(iw,ik) = ans_cia(iw) * amaH2 * amaH2 * pathlength(ik)
-          !!!write(*,*) "H2-H2 CIA",iw, ans, h2vmr, tau_h2h2cia(iw,ik)
-        enddo
+         ! --- SAFETY CHECK ---
+         if (temperature >= tgrid_h2h2(1) .and. &
+              temperature <= tgrid_h2h2(kh2h2_ntemp)) then
+
+            t_ref_index_h2h2 = kh2h2_ntemp
+            t_h2h2 = temperature
+            do
+               if (t_ref_index_h2h2 .lt. 1) exit                   ! exit if temperature less than minimum grid
+               if (t_h2h2 .gt. tgrid_h2h2(kh2h2_ntemp)) then  ! temperature greater than grid max
+                  t_h2h2 = tgrid_h2h2(t_ref_index_h2h2)   ! set t to max grid value
+                  exit                                              ! exit
+               endif
+               if ((tgrid_h2h2(t_ref_index_h2h2) .le. t_h2h2)) exit ! found reference temperature
+               t_ref_index_h2h2 = t_ref_index_h2h2 - 1                   ! increment reference temperature
+            enddo
+            ! if temperature less than minimum of grid, force reference to minimum grid value
+            ! force reference temperature for interpolation to minimum temperature in tgrid
+            if (t_ref_index_h2h2 .lt. 1) then
+               t_ref_index_h2h2 = 1
+               t_h2h2 = tgrid_h2h2(t_ref_index_h2h2)
+            endif
+            call interpH2H2cia(kh2h2, t_h2h2, t_ref_index_h2h2, ans_cia)
+         else  ! Temperature out of bounds disable h2-h2 calc
+            ans_cia(:) = 0.0_r8
+         endif
+         ! Apply Result (Safe because ans_cia is 0.0 if skipped)
+
+         do iw=iwbeg,iwend      ! loop over bands
+            tau_h2h2_cia(iw,ik) = ans_cia(iw) * amaH2 * amaH2 * pathlength(ik)
+!!!write(*,*) "H2-H2 CIA",iw, ans, h2vmr, tau_h2h2cia(iw,ik)
+         enddo
       endif
 
 
       !!====  Calculate N2-H2 CIA  ====!!
       if (u_h2 .gt. 0 .and. u_n2 .gt. 0) then
-        t_ref_index_n2h2 = kn2h2_ntemp
-        t_n2h2 = temperature
-        do
-          if (t_ref_index_n2h2 .lt. 1) exit                   ! exit if temperature less than minimum grid
-          if (t_n2h2 .gt. tgrid_n2h2(kn2h2_ntemp)) then  ! temperature greater than grid max
-            t_n2h2 = tgrid_n2h2(t_ref_index_n2h2)   ! set t to max grid value
-            exit                                              ! exit
-          endif
-          if ((tgrid_n2h2(t_ref_index_n2h2) .le. t_n2h2)) exit ! found reference temperature
-          t_ref_index_n2h2 = t_ref_index_n2h2 - 1                   ! increment reference temperature
-        enddo
-        ! if temperature less than minimum of grid, force reference to minimum grid value
-        ! force reference temperature for interpolation to minimum temperature in tgrid
-        if (t_ref_index_n2h2 .lt. 1) then
-          t_ref_index_n2h2 = 1
-          t_n2h2 = tgrid_n2h2(t_ref_index_n2h2)
-        endif
-        call interpN2H2cia(kn2h2, t_n2h2, t_ref_index_n2h2, ans_cia)
-        do iw=iwbeg,iwend      ! loop over bands
-          tau_n2h2_cia(iw,ik)  = ans_cia(iw) * amaN2 * amaH2 * pathlength(ik)
-          !!!write(*,*) "N2-H2 CIA",iw, ans, h2vmr !tau_n2h2cia(iw,ik)
-        enddo
+         ! --- SAFETY CHECK ---
+         if (temperature >= tgrid_n2h2(1) .and. &
+              temperature <= tgrid_n2h2(kn2h2_ntemp)) then
+
+            t_ref_index_n2h2 = kn2h2_ntemp
+            t_n2h2 = temperature
+            do
+               if (t_ref_index_n2h2 .lt. 1) exit                   ! exit if temperature less than minimum grid
+               if (t_n2h2 .gt. tgrid_n2h2(kn2h2_ntemp)) then  ! temperature greater than grid max
+                  t_n2h2 = tgrid_n2h2(t_ref_index_n2h2)   ! set t to max grid value
+                  exit                                              ! exit
+               endif
+               if ((tgrid_n2h2(t_ref_index_n2h2) .le. t_n2h2)) exit ! found reference temperature
+               t_ref_index_n2h2 = t_ref_index_n2h2 - 1                   ! increment reference temperature
+            enddo
+            ! if temperature less than minimum of grid, force reference to minimum grid value
+            ! force reference temperature for interpolation to minimum temperature in tgrid
+            if (t_ref_index_n2h2 .lt. 1) then
+               t_ref_index_n2h2 = 1
+               t_n2h2 = tgrid_n2h2(t_ref_index_n2h2)
+            endif
+            call interpN2H2cia(kn2h2, t_n2h2, t_ref_index_n2h2, ans_cia)
+         else  ! Temperature out of bounds disable h2-h2 calc
+            ans_cia(:) = 0.0_r8
+         endif
+         ! Apply Result (Safe because ans_cia is 0.0 if skipped)
+
+         do iw=iwbeg,iwend      ! loop over bands
+            tau_n2h2_cia(iw,ik)  = ans_cia(iw) * amaN2 * amaH2 * pathlength(ik)
+!!!write(*,*) "N2-H2 CIA",iw, ans, h2vmr !tau_n2h2cia(iw,ik)
+         enddo
       endif
 
      !!====  Calculate CO2-CO2 CIA  ====!!
      if (u_co2 .gt. 0) then
-       t_ref_index_co2co2_lw = kco2co2_lw_ntemp
-       t_co2co2_lw = temperature
-       do
-         if (t_ref_index_co2co2_lw .lt. 1) exit                   ! exit if temperature less than minimum grid
-         if (t_co2co2_lw .gt. tgrid_co2co2_lw(kco2co2_lw_ntemp)) then  ! temperature greater than grid max
-           t_co2co2_lw = tgrid_co2co2_lw(t_ref_index_co2co2_lw)   ! set t to max grid value
-           exit                                              ! exit
-         endif
-         if ((tgrid_co2co2_lw(t_ref_index_co2co2_lw) .le. t_co2co2_lw)) exit ! found reference temperature
-         t_ref_index_co2co2_lw = t_ref_index_co2co2_lw - 1                   ! increment reference temperature
-       enddo
-       ! if temperature less than minimum of grid, force reference to minimum grid value
-       ! force reference temperature for interpolation to minimum temperature in tgrid
-       if (t_ref_index_co2co2_lw .lt. 1) then
-         t_ref_index_co2co2_lw = 1
-         t_co2co2_lw = tgrid_co2co2_lw(t_ref_index_co2co2_lw)
-       endif
-       call interpCO2CO2cia_lw(kco2co2_lw, t_co2co2_lw, t_ref_index_co2co2_lw, ans_cia)
-       do iw=iwbeg,iwend      ! loop over bands
-         tau_co2co2_lw_cia(iw,ik) = ans_cia(iw) * amaCO2 * amaCO2 * pathlength(ik)
-         !!!write(*,*) "CO2-CO2 CIA",iw, ans_cia(iw), amaCO2, pathlength(ik),  tau_co2co2_lw_cia(iw,ik)
-       enddo
+        ! --- SAFETY CHECK LW ---
+        if (temperature >= tgrid_co2co2_lw(1) .and. &
+             temperature <= tgrid_co2co2_lw(kco2co2_lw_ntemp)) then
+           t_ref_index_co2co2_lw = kco2co2_lw_ntemp
+           t_co2co2_lw = temperature
+           do
+              if (t_ref_index_co2co2_lw .lt. 1) exit                   ! exit if temperature less than minimum grid
+              if (t_co2co2_lw .gt. tgrid_co2co2_lw(kco2co2_lw_ntemp)) then  ! temperature greater than grid max
+                 t_co2co2_lw = tgrid_co2co2_lw(t_ref_index_co2co2_lw)   ! set t to max grid value
+                 exit                                              ! exit
+              endif
+              if ((tgrid_co2co2_lw(t_ref_index_co2co2_lw) .le. t_co2co2_lw)) exit ! found reference temperature
+              t_ref_index_co2co2_lw = t_ref_index_co2co2_lw - 1                   ! increment reference temperature
+           enddo
+           ! if temperature less than minimum of grid, force reference to minimum grid value
+           ! force reference temperature for interpolation to minimum temperature in tgrid
+           if (t_ref_index_co2co2_lw .lt. 1) then
+              t_ref_index_co2co2_lw = 1
+              t_co2co2_lw = tgrid_co2co2_lw(t_ref_index_co2co2_lw)
+           endif
+           call interpCO2CO2cia_lw(kco2co2_lw, t_co2co2_lw, t_ref_index_co2co2_lw, ans_cia)
+        else ! (temperature >= tgrid_co2co2_lw(1) .and. (T out of range check)
+           ! Too Cold/Hot -> Zero Opacity
+           ans_cia(:) = 0.0_r8
+        endif
 
-       t_ref_index_co2co2_sw = kco2co2_sw_ntemp
-       t_co2co2_sw = temperature
-       do
-         if (t_ref_index_co2co2_sw .lt. 1) exit                   ! exit if temperature less than minimum grid
-         if (t_co2co2_sw .gt. tgrid_co2co2_sw(kco2co2_sw_ntemp)) then  ! temperature greater than grid max
-           t_co2co2_sw = tgrid_co2co2_sw(t_ref_index_co2co2_sw)   ! set t to max grid value
-           exit                                              ! exit
-         endif
-         if ((tgrid_co2co2_sw(t_ref_index_co2co2_sw) .le. t_co2co2_sw)) exit ! found reference temperature
-         t_ref_index_co2co2_sw = t_ref_index_co2co2_sw - 1                   ! increment reference temperature
-       enddo
-       ! if temperature less than minimum of grid, force reference to minimum grid value
-       ! force reference temperature for interpolation to minimum temperature in tgrid
-       if (t_ref_index_co2co2_sw .lt. 1) then
-         t_ref_index_co2co2_sw = 1
-         t_co2co2_sw = tgrid_co2co2_sw(t_ref_index_co2co2_sw)
-       endif
-       call interpCO2CO2cia_sw(kco2co2_sw, t_co2co2_sw, t_ref_index_co2co2_sw, ans_cia)
-       do iw=iwbeg,iwend      ! loop over bands
-         tau_co2co2_sw_cia(iw,ik) = ans_cia(iw) * amaCO2 * amaCO2 * pathlength(ik)
-         !!!write(*,*) "CO2-CO2 CIA",iw, ans, co2vmr, tau_co2co2cia(iw,ik)
-       enddo
+        ! Apply Result (Safe becaus ans_cia is 0.0 if skipped
+        do iw=iwbeg,iwend      ! loop over bands
+           tau_co2co2_lw_cia(iw,ik) = ans_cia(iw) * amaCO2 * amaCO2 * pathlength(ik)
+!!!write(*,*) "CO2-CO2 CIA",iw, ans_cia(iw), amaCO2, pathlength(ik),  tau_co2co2_lw_cia(iw,ik)
+        enddo
+
+        ! --- SAFETY CHECK (SW) ---
+        if (temperature >= tgrid_co2co2_sw(1) .and. &
+             temperature <= tgrid_co2co2_sw(kco2co2_sw_ntemp)) then
+
+           t_ref_index_co2co2_sw = kco2co2_sw_ntemp
+           t_co2co2_sw = temperature
+           do
+              if (t_ref_index_co2co2_sw .lt. 1) exit                   ! exit if temperature less than minimum grid
+              if (t_co2co2_sw .gt. tgrid_co2co2_sw(kco2co2_sw_ntemp)) then  ! temperature greater than grid max
+                 t_co2co2_sw = tgrid_co2co2_sw(t_ref_index_co2co2_sw)   ! set t to max grid value
+                 exit                                              ! exit
+              endif
+              if ((tgrid_co2co2_sw(t_ref_index_co2co2_sw) .le. t_co2co2_sw)) exit ! found reference temperature
+              t_ref_index_co2co2_sw = t_ref_index_co2co2_sw - 1                   ! increment reference temperature
+           enddo
+           ! if temperature less than minimum of grid, force reference to minimum grid value
+           ! force reference temperature for interpolation to minimum temperature in tgrid
+           if (t_ref_index_co2co2_sw .lt. 1) then
+              t_ref_index_co2co2_sw = 1
+              t_co2co2_sw = tgrid_co2co2_sw(t_ref_index_co2co2_sw)
+           endif
+           call interpCO2CO2cia_sw(kco2co2_sw, t_co2co2_sw, t_ref_index_co2co2_sw, ans_cia)
+        else ! If temps are out of range for tables
+           ans_cia(:) = 0.0_r8
+        endif
+
+        do iw=iwbeg,iwend      ! loop over bands
+           tau_co2co2_sw_cia(iw,ik) = ans_cia(iw) * amaCO2 * amaCO2 * pathlength(ik)
+!!!write(*,*) "CO2-CO2 CIA",iw, ans, co2vmr, tau_co2co2cia(iw,ik)
+        enddo
      endif
 
      !!====  Calculate CO2-CH4 CIA  ====!!
      if (u_co2 .gt. 0 .and. u_ch4 .gt. 0) then
-        t_ref_index_co2ch4 = kco2ch4_ntemp
-        t_co2ch4 = temperature
-        do
-          if (t_ref_index_co2ch4 .lt. 1) exit                   ! exit if temperature less than minimum grid
-          if (t_co2ch4 .gt. tgrid_co2ch4(kco2ch4_ntemp)) then  ! temperature greater than grid max
-            t_co2ch4 = tgrid_co2ch4(t_ref_index_co2ch4)   ! set t to max grid value
-            exit                                              ! exit
-          endif
-          if ((tgrid_co2ch4(t_ref_index_co2ch4) .le. t_co2ch4)) exit ! found reference temperature
-          t_ref_index_co2ch4 = t_ref_index_co2ch4 - 1                   ! increment reference temperature
-        enddo
-        ! if temperature less than minimum of grid, force reference to minimum grid value
-        ! force reference temperature for interpolation to minimum temperature in tgrid
-        if (t_ref_index_co2ch4 .lt. 1) then
-          t_ref_index_co2ch4 = 1
-          t_co2ch4 = tgrid_co2ch4(t_ref_index_co2ch4)
+        if (temperature >= tgrid_co2ch4(1) .and. &
+             temperature <= tgrid_co2ch4(kco2ch4_ntemp)) then
+
+           t_ref_index_co2ch4 = kco2ch4_ntemp
+           t_co2ch4 = temperature
+           do
+              if (t_ref_index_co2ch4 .lt. 1) exit                   ! exit if temperature less than minimum grid
+              if (t_co2ch4 .gt. tgrid_co2ch4(kco2ch4_ntemp)) then  ! temperature greater than grid max
+                 t_co2ch4 = tgrid_co2ch4(t_ref_index_co2ch4)   ! set t to max grid value
+                 exit                                              ! exit
+              endif
+              if ((tgrid_co2ch4(t_ref_index_co2ch4) .le. t_co2ch4)) exit ! found reference temperature
+              t_ref_index_co2ch4 = t_ref_index_co2ch4 - 1                   ! increment reference temperature
+           enddo
+           ! if temperature less than minimum of grid, force reference to minimum grid value
+           ! force reference temperature for interpolation to minimum temperature in tgrid
+           if (t_ref_index_co2ch4 .lt. 1) then
+              t_ref_index_co2ch4 = 1
+              t_co2ch4 = tgrid_co2ch4(t_ref_index_co2ch4)
+           endif
+           t_ref_index_co2ch4    = kco2ch4_ntemp
+           call interpCO2CH4cia(kco2ch4, t_co2ch4, t_ref_index_co2ch4, ans_cia)
+        else  ! Temperature out of bounds disable co2-ch4 calc
+           ans_cia(:) = 0.0_r8
         endif
-        t_ref_index_co2ch4    = kco2ch4_ntemp
-        call interpCO2CH4cia(kco2ch4, t_co2ch4, t_ref_index_co2ch4, ans_cia)
+        ! Apply Result (Safe because ans_cia is 0.0 if skipped)
         do iw=iwbeg,iwend      ! loop over bands
           tau_co2ch4_cia(iw,ik) = ans_cia(iw) * amaCO2 * amaCH4 * pathlength(ik)
 !          !write(*,*) "CO2-CH4 CIA",iw, ans, amaCO2, pathlength(ik),  tau_co2ch4cia(iw,ik)

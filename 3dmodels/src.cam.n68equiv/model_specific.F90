@@ -70,7 +70,6 @@ contains
 !------------------------------------------------------------------------
 
     use kabs
-    use shr_const_mod, only: SHR_CONST_G, SHR_CONST_PSTD, SHR_CONST_AVOGAD
     use rad_interp_mod, only:  bilinear_interpK_grey
 
     implicit none

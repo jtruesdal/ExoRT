@@ -14,14 +14,10 @@ module exo_radiation_mod
 !---------------------------------------------------------------------
 !
   use shr_kind_mod,     only: r8 => shr_kind_r8
-  use shr_const_mod,    only: SHR_CONST_PI,SHR_CONST_G, SHR_CONST_PSTD, &
-                              SHR_CONST_RGAS, SHR_CONST_AVOGAD, &
-                              SHR_CONST_STEBOL, SHR_CONST_CDAY, &
-                              SHR_CONST_BOLTZ, &
-                              SHR_CONST_RHOFW, SHR_CONST_RHOICE
-!!                              SHR_CONST_RHOFW, SHR_CONST_RHOICE, &
-!!                              SHR_CONST_LOSCHMIDT
-  use physconst,        only: mwdry, cpair
+  use shr_const_mod,    only: SHR_CONST_PI, SHR_CONST_G_EARTH => SHR_CONST_G, &
+                              SHR_CONST_AVOGAD, &
+                              SHR_CONST_STEBOL
+  use physconst,        only: mwdry, cpair, SHR_CONST_G => gravit
   use ppgrid            ! pver, pverp is here
   use pmgrid            ! ?masterproc is here?
   use spmd_utils,       only: masterproc
@@ -48,7 +44,6 @@ module exo_radiation_mod
 !
 ! private data
 !
-
   ! Default values for namelist variables
 
   integer :: openstatus
@@ -359,6 +354,7 @@ contains
      real(r8), dimension(pver) :: dzc          ! [kg m-2], column amount of mass
      real(r8), dimension(pverp) :: tint        ! [K] temperatures at level interfaces
      real(r8), dimension(pverp) :: tmid        ! [K] temperatures at level at mid layers + top (isothermal)
+     real(r8), dimension(pverp) :: pdel        ! [Pa] pressure thickness of layers
      real(r8), dimension(pverp) :: pmid        ! [Pa] pressure at level at mid layers + top (isothermal)
 
      real(r8) :: dy
@@ -408,6 +404,7 @@ contains
     ! Set amount in pseudo layer, extends above model top to infinity
     ! Set P, T, and gases in psuedo layer equal to the top model layer
     tmid(1)  = ext_tmid(1)      ! temperatures [K]
+    pdel(1)  = ext_pdel(1)      ! pressure thickness [Pa]
     pmid(1)  = ext_pint(1)      ! pressure [Pa]
     qH2O(1)  = ext_H2O(1)       ! H2O vapor mass concentration (specific humdity) [kg/kg]
     qCO2(1)  = ext_CO2(1)       ! CO2 mass mixing ratio [kg/kg]
@@ -443,6 +440,7 @@ contains
       REL(k)   = ext_rel(k-1)
       tmid(k)  = ext_tmid(k-1)
       pmid(k)  = ext_pmid(k-1)
+      pdel(k)  = ext_pdel(k-1)
     enddo
 
     ! Set ground (surface) values:
@@ -633,7 +631,9 @@ contains
     endif
 
 
-    call calc_gasopd(tmid, pmid/100.0, ext_pdel/100.0, coldens, coldens_dry, &
+    !jt  Indexing error, Need to pass pseudo layer version of pdel
+    !jt call calc_gasopd(tmid, pmid, ext_pdel, coldens, coldens_dry, &
+    call calc_gasopd(tmid, pmid/100.0, pdel/100.0, coldens, coldens_dry, &
                      qH2O, qCO2, qCH4, qC2H6, qO2, qO3, qH2, qN2, &
                      zlayer*100.0, tau_gas, tau_ray)
 
@@ -686,6 +686,48 @@ contains
                       sw_dTdt, lw_dTdt, lw_dnflux, lw_upflux, sw_upflux, sw_dnflux, &
                       lw_dnflux_spec, lw_upflux_spec, sw_upflux_spec, sw_dnflux_spec, &
                       vis_dir, vis_dif, nir_dir, nir_dif, sol_toa)
+! ... existing code ...
+    ! Calculate final fluxes / heating rates
+    call rad_postcalc(CK1sol, CK2sol, CPBsol, CMBsol, &
+                      EM1sol, EM2sol, EL1sol, EL2sol, &
+                      DIRECTsol, DIRECTU, DIREC, SOL, &
+                      cos_mu, dzc, swcut, part_in_tshadow, sw_on, &
+                      sw_dTdt, lw_dTdt, lw_dnflux, lw_upflux, sw_upflux, sw_dnflux, &
+                      lw_dnflux_spec, lw_upflux_spec, sw_upflux_spec, sw_dnflux_spec, &
+                      vis_dir, vis_dif, nir_dir, nir_dif, sol_toa)
+
+    ! =========================================================================
+    ! GENERALIZED NON-LTE SPONGE FILTER
+    ! =========================================================================
+    ! Purpose: Dampen Longwave cooling in the upper atmosphere where the
+    ! LTE assumption (Planck Function) breaks down. Without this, the model
+    ! calculates excessive cooling (-700+ K/day) and crashes.
+    !
+    ! Logic: If Pressure < 1.0 Pa, scale cooling linearly with pressure.
+    !        This adapts automatically to any vertical grid or model top.
+    ! =========================================================================
+    block
+      real(r8), parameter :: p_lte_limit = 20.0_r8  ! Start damping at 20 Pa
+      real(r8), parameter :: min_damp    = 0.05_r8  ! Max damping (keep 5%)
+      real(r8) :: damp_factor
+      integer  :: k_lvl
+
+      do k_lvl = 1, pver
+         if (ext_pmid(k_lvl) < p_lte_limit) then
+
+            ! Calculate scaling factor based on Pressure
+            ! At p = p_lte_limit, factor = 1.0 (No change)
+            ! At p -> 0, factor -> min_damp (Strong damping)
+            damp_factor = max(min_damp, ext_pmid(k_lvl) / p_lte_limit)
+
+            ! Apply only to Longwave (Cooling)
+            ! We leave Shortwave alone as it is the stabilizing energy source.
+            lw_dTdt(k_lvl) = lw_dTdt(k_lvl) * damp_factor
+
+         endif
+      enddo
+    end block
+    ! =========================================================================
 
     return
 
