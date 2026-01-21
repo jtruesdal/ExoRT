@@ -1,4 +1,3 @@
-
 module exo_init_ref
 
 !---------------------------------------------------------------------
@@ -7,11 +6,11 @@ module exo_init_ref
   use shr_kind_mod,     only: r8 => shr_kind_r8
   use shr_const_mod,    only: SHR_CONST_PI, SHR_CONST_STEBOL
   use physconst,        only: scon, mwdry
-  use radgrid
-  use spmd_utils,       only: masterproc
+  use radgrid,          only: ntot_wavlnrng, ntot_gpt, ngauss_pts, ngauss_8gpt, g_weight, &
+                              g_weight_8gpt, g_weight_16gpt, ngauss_16gpt, wavenum_edge
+  use spmd_utils,       only: masterproc, mpicom, mpi_integer, mpi_real8, masterprocid, iam
   use planck_mod
-  use exoplanet_mod
-
+  use exoplanet_mod,    only : swFluxLimit,lwFluxLimit, do_exo_rt_optimize_bands, tmax
   implicit none
 
   public
@@ -80,6 +79,7 @@ contains
 !------------------------------------------------------------------------
 ! Purpose: Initial reference value arrays
 !------------------------------------------------------------------------
+  use radgrid,          only: solarflux
   implicit none
 !------------------------------------------------------------------------
 ! Local Variables
@@ -91,7 +91,7 @@ contains
 !
 ! Start Code
 !
-    ! Arrange g_weight(ntot_pt) array
+  ! Arrange g_weight(ntot_pt) array
     iq = 0
     do iw=1,ntot_wavlnrng
       do ig=1, ngauss_pts(iw)
@@ -103,7 +103,6 @@ contains
 
     ! Scale solar constant to namelist value
     solarflux(:) = solarflux(:)*scon/SUM(solarflux(:))
-
     !
     ! Calculate the "average" wavenumber (1/wavelength) <wavenum()> for each
     !  wavelength interval in each wavelength group [1/cm]:
@@ -139,7 +138,7 @@ contains
       write(*,*) "TOTAL SOLAR FLUX:", SUM(solarflux), SUM(gw_solflux)
     endif
     if (do_exo_rt_optimize_bands) then
-      call optimize_bands_lw
+       call optimize_bands_lw
     endif
 
     if (masterproc) then
@@ -161,7 +160,8 @@ contains
 !          in order to improve model efficiency.
 !          Lost flux rescaled into remaining bins.
 !------------------------------------------------------------------------
-  implicit none
+    use radgrid,          only: solarflux
+    implicit none
 !------------------------------------------------------------------------
 ! Local Variables
 !
@@ -169,22 +169,27 @@ contains
     real(r8), dimension(ntot_wavlnrng) :: cumulative_tsi
     real(r8), dimension(ntot_wavlnrng) :: solarflux_scale
     real(r8), dimension(ntot_gpt)      :: gw_solflux_scale
-    integer :: iw, iwb, iwe, ip, temp, ig
+    integer :: iw, iwb, iwe, ip, temp, ig, ierr
 
 !------------------------------------------------------------------------
 !
 ! Start Code
 !
+    ! Sync the Physics Data ---
+    ! We broadcast solarflux to ensure every processor has bit-identical data.
+    ! This prevents floating-point drift from causing the optimization loop
+    ! to exit at different indices on different ranks.
+    call mpi_bcast(solarflux, ntot_wavlnrng, mpi_real8, masterprocid, mpicom, ierr)
+    ! -------------------------------------------
 
     if (masterproc) write(*,*) "Optimizing shortwave bands..."
 
     ! set solar limits
     total_tsi = SUM(solarflux)
+
     do iw=1, ntot_wavlnrng
       cumulative_tsi(iw) = SUM(solarflux(iw:ntot_wavlnrng))/total_tsi
-      !!write(*,*) iw, solarflux(iw), cumulative_tsi(iw)
     enddo
-
     iwe = ntot_wavlnrng
     do iwb=ntot_wavlnrng, 1, -1
       if (cumulative_tsi(iwb) .lt. 1.0-swFluxLimit)  iwe = iwe - 1
@@ -256,14 +261,13 @@ contains
 !
     real(r8) :: planck, w1, w2
     real(r8), dimension(ntot_wavlnrng) :: flux, cumulative_flux
-    integer :: iw, iwr, ig, temp
+    integer :: iw, iwr, ig, temp, ierr
 
 !------------------------------------------------------------------------
 !
 ! Start Code
 !
     do iw=1,ntot_wavlnrng
-
        w1 = dble(1.439*wavenum_edge(iw))      ! 1.439 ~ ((h*c)/k)
        w2 = dble(1.439*wavenum_edge(iw+1))    ! convert nu cm-1 to lambda (um)
        planck = (PLANCKf(w1,Tmax)-PLANCKf(w2,Tmax))*SHR_CONST_STEBOL
