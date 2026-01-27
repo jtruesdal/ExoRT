@@ -686,15 +686,6 @@ contains
                       sw_dTdt, lw_dTdt, lw_dnflux, lw_upflux, sw_upflux, sw_dnflux, &
                       lw_dnflux_spec, lw_upflux_spec, sw_upflux_spec, sw_dnflux_spec, &
                       vis_dir, vis_dif, nir_dir, nir_dif, sol_toa)
-! ... existing code ...
-    ! Calculate final fluxes / heating rates
-    call rad_postcalc(CK1sol, CK2sol, CPBsol, CMBsol, &
-                      EM1sol, EM2sol, EL1sol, EL2sol, &
-                      DIRECTsol, DIRECTU, DIREC, SOL, &
-                      cos_mu, dzc, swcut, part_in_tshadow, sw_on, &
-                      sw_dTdt, lw_dTdt, lw_dnflux, lw_upflux, sw_upflux, sw_dnflux, &
-                      lw_dnflux_spec, lw_upflux_spec, sw_upflux_spec, sw_dnflux_spec, &
-                      vis_dir, vis_dif, nir_dir, nir_dif, sol_toa)
 
     ! =========================================================================
     ! GENERALIZED NON-LTE SPONGE FILTER
