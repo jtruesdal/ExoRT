@@ -469,7 +469,6 @@ contains
       !coldens_dry(k) = (ext_pdeldry(k-1)/SHR_CONST_G) * SHR_CONST_AVOGAD/mwdry  !gives identical answer as below
       coldens_dry(k) = (ext_pdel(k-1)/SHR_CONST_G)*(1.0-qh2o(k)) * SHR_CONST_AVOGAD/mwdry
     enddo
-
     ! Define mass column density in each layer [kg m-2]
     dzc(:) = ext_pdel(:)/SHR_CONST_G
 
@@ -710,6 +709,15 @@ contains
             ! At p = p_lte_limit, factor = 1.0 (No change)
             ! At p -> 0, factor -> min_damp (Strong damping)
             damp_factor = max(min_damp, ext_pmid(k_lvl) / p_lte_limit)
+
+            ! [DEBUG] Print heating rates before damping to prove instability
+            if (masterproc .and. abs(lw_dTdt(k_lvl)) > 5.0_r8) then
+               write(6,*) "DEBUG SPONGE: Level", k_lvl
+               write(6,*) "  Pressure (Pa) :", ext_pmid(k_lvl)
+               write(6,*) "  Raw Heat (K/s):", lw_dTdt(k_lvl)
+               write(6,*) "  Damp Factor   :", damp_factor
+               write(6,*) "  Final Heat    :", lw_dTdt(k_lvl) * damp_factor
+            endif
 
             ! Apply only to Longwave (Cooling)
             ! We leave Shortwave alone as it is the stabilizing energy source.

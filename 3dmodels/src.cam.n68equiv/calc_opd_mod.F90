@@ -170,7 +170,33 @@ contains
     tau_o2co2_cia(:,:) = 0.0
 
     do ik = 1,pverp
+! -----------------------------------------------------------------------
+      ! [FIX] Vacuum Safety Cutoff
+      ! -----------------------------------------------------------------------
+      ! The CO2 k-distribution table fails at low pressures (e.g. 0.02 mb),
+      ! returning unphysical opacities (Tau > 20,000) that crash the model.
+      ! We skip radiation calculations for pressures < 0.05 mb (5 Pa).
+      ! -----------------------------------------------------------------------
 
+      ! Check pressure (pmid is in mb)
+      if (pmid(ik) < 0.05_r8) then
+          tau_gas(:,ik) = 0.0_r8
+          tau_ray(:,ik) = 0.0_r8
+
+          ! Zero out CIA terms to prevent array leaks
+          tau_n2n2_cia(:,ik)      = 0.0_r8
+          tau_n2h2_cia(:,ik)      = 0.0_r8
+          tau_h2h2_cia(:,ik)      = 0.0_r8
+          tau_co2co2_lw_cia(:,ik) = 0.0_r8
+          tau_co2co2_sw_cia(:,ik) = 0.0_r8
+          tau_co2h2_cia(:,ik)     = 0.0_r8
+          tau_co2ch4_cia(:,ik)    = 0.0_r8
+          tau_o2o2_cia(:,ik)      = 0.0_r8
+          tau_o2n2_cia(:,ik)      = 0.0_r8
+          tau_o2co2_cia(:,ik)     = 0.0_r8
+
+          cycle  ! Skip to next layer
+      endif
       ! optical depths are calculated at mid-layers
       ! level pverp is the atmosphere grid box nearest the surface
       ! level 1 is the psuedo layer above the model top to infinity
@@ -242,9 +268,6 @@ contains
       endif
       !jt --- VACUUM SAFETY PATCH END ---
 
-      ! find the reference pressure value, exit if pressure less than minimum of grid
-      p_ref_index = kc_npress          ! index of reference pressure, default is max
-      ! ... (Rest of loop) ...
       ! find the reference pressure value, exit if pressure less than minimum of grid
       p_ref_index = kc_npress          ! index of reference pressure, default is max
       do  ! for K coefficient data sets
@@ -323,9 +346,9 @@ contains
       ! We check the RAW 'temperature' and 'u_h2o' inputs.
       ! 1. Is the layer wet enough to matter? (> 1.0e16 molecules/cm2)
       !    The water vapor continuum calculation is disabled for column
-      !    densities below $1.0 \times 10^{16}$ molecules/cm². Based on the
+      !    densities below $1.0 \times 10^{16}$ molecules/cm^2. Based on the
       !    maximum infrared continuum cross-section of
-      !         $\sim 10^{-21}$ cm²/molecule (Clough et al., 1989),
+      !         $\sim 10^{-21}$ cm^2/molecule (Clough et al., 1989),
       !    this threshold corresponds to an optical depth of $\tau < 10^{-5}$,
       !    which is radiatively negligible.
       ! 2. Is the temperature within the valid table range? (Min to Max)
