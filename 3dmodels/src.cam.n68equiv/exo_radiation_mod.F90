@@ -686,48 +686,6 @@ contains
                       lw_dnflux_spec, lw_upflux_spec, sw_upflux_spec, sw_dnflux_spec, &
                       vis_dir, vis_dif, nir_dir, nir_dif, sol_toa)
 
-    ! =========================================================================
-    ! GENERALIZED NON-LTE SPONGE FILTER
-    ! =========================================================================
-    ! Purpose: Dampen Longwave cooling in the upper atmosphere where the
-    ! LTE assumption (Planck Function) breaks down. Without this, the model
-    ! calculates excessive cooling (-700+ K/day) and crashes.
-    !
-    ! Logic: If Pressure < 1.0 Pa, scale cooling linearly with pressure.
-    !        This adapts automatically to any vertical grid or model top.
-    ! =========================================================================
-    block
-      real(r8), parameter :: p_lte_limit = 20.0_r8  ! Start damping at 20 Pa
-      real(r8), parameter :: min_damp    = 0.05_r8  ! Max damping (keep 5%)
-      real(r8) :: damp_factor
-      integer  :: k_lvl
-
-      do k_lvl = 1, pver
-         if (ext_pmid(k_lvl) < p_lte_limit) then
-
-            ! Calculate scaling factor based on Pressure
-            ! At p = p_lte_limit, factor = 1.0 (No change)
-            ! At p -> 0, factor -> min_damp (Strong damping)
-            damp_factor = max(min_damp, ext_pmid(k_lvl) / p_lte_limit)
-
-            ! [DEBUG] Print heating rates before damping to prove instability
-            if (masterproc .and. abs(lw_dTdt(k_lvl)) > 5.0_r8) then
-               write(6,*) "DEBUG SPONGE: Level", k_lvl
-               write(6,*) "  Pressure (Pa) :", ext_pmid(k_lvl)
-               write(6,*) "  Raw Heat (K/s):", lw_dTdt(k_lvl)
-               write(6,*) "  Damp Factor   :", damp_factor
-               write(6,*) "  Final Heat    :", lw_dTdt(k_lvl) * damp_factor
-            endif
-
-            ! Apply only to Longwave (Cooling)
-            ! We leave Shortwave alone as it is the stabilizing energy source.
-            lw_dTdt(k_lvl) = lw_dTdt(k_lvl) * damp_factor
-
-         endif
-      enddo
-    end block
-    ! =========================================================================
-
     return
 
   end subroutine aerad_driver
