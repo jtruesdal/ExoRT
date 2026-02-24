@@ -8,23 +8,45 @@ pro makeCARMAOptics
 ; 
 ; The refractive indices are interpolated to the radiation grid
 ; BEFORE doing MIE or Fractal optics calculations
+;
+; Wolf, E.T., Feb 2026:  "This code needs to be refactored
+; for generality, along with all the other tools here.  Rewritten modularly
+; into python.  Splitting aerosol RTs, spectral grids, and CARMA settings,
+; leaving the core mie vs fractal mean field solver, netcdf construction,
+; diagnostic plotting utilities.  For now, this is a mess."
+; Partially refactored to accomodate volcanic aerosol mie calculation
+;
+;
+
 ;---------------------------------------------------
 ;---------------------------------------------------
 
 ;;=============  options & files =================
 ;choose from pre-constructed CARMA elements
-do_haze = 1 ; flag, compute optical properties of titan haze particles
+do_haze = 0 ; flag, compute optical properties of titan haze particles
+do_volc = 1
+
+if(do_haze eq do_volc) then begin
+   print, "select one and only one aerosol type to calculate"
+   print, "check values ", do_haze, do_volc
+   print, "exiting"
+   exit
+endif
 
 plot_ps = 1              ; if eq 0, then plot to x windows 
 do_plot_refract = 1      ; plot raw refractive indices
+plot_radii_index = 1
 
 do_optical_calc = 1
 do_plot_qwg = 1          ; plot extinction, single scattering, and asymmetry parameter  ;Currently not operable
-do_write_netcdf = 0      ; flag to write netcdf outputs
+do_write_netcdf = 1      ; flag to write netcdf outputs
 
 ;carma_output_filename = 'haze_n68_b40_mie.nc'
-carma_output_filename = 'haze_n68_b40_fractal.nc'
-;carma_output_filename = 'haze_n208_b40_fractal.nc'
+;carma_output_filename = 'haze_n68_b40_fractal.nc'
+;carma_output_filename = 'haze_n208_b40_fractal.nc
+
+volc_radii = 0.5e-4 ; 1 micron in units of cm.  Only used for volc
+carma_output_filename = 'volc_pw1975_n68_r0.5um_mie.nc'
 
 ;-- choose one and only one --
 ;   -- spectral resolution 
@@ -40,6 +62,7 @@ colortable = 40 ; ;load standard color table
 ;-------- input file list ----------
 root = '/discover/nobackup/etwolf/models'
 HAZE_REFRACT_FILE = root + '/ExoRT/data/aerosol/refractive_indices/Khare_haze.txt'
+VOLC_PW1975_REFRACT_FILE = root + '/ExoRT/data/aerosol/refractive_indices/palmer_williams_h2so4.dat'
 
 if (do_haze eq 1) then print, "calculating titan haze optical constants"
 
@@ -47,16 +70,16 @@ if (do_haze eq 1) then print, "calculating titan haze optical constants"
 ;-------- read haze files ----------
 if (do_haze eq 1) then begin
 
-  nw_haze = 90
+  nspec_haze = 90
   header_haze = strarr(4)
-  data_haze = fltarr(4,nw_haze)
+  data_haze = fltarr(4,nspec_haze)
 
-  wavelength_haze = fltarr(nw_haze)
-  real_haze = fltarr(nw_haze)
-  a = fltarr(nw_haze)
-  b = fltarr(nw_haze)
+  wavelength_haze = fltarr(nspec_haze)
+  real_haze = fltarr(nspec_haze)
+  a = fltarr(nspec_haze)
+  b = fltarr(nspec_haze)
   ;k = a*10^-6
-  imaginary_haze = fltarr(nw_haze)
+  imaginary_haze = fltarr(nspec_haze)
 
   OPENR,lun,HAZE_REFRACT_FILE,/Get_lun
   READF,lun,header_haze
@@ -75,11 +98,54 @@ if (do_haze eq 1) then begin
 
 
   ;sort out where size parameter too big, only relevant for far UV
-  wl = where(2*!pi*100.0/wavelength_haze lt 12000.0, nw_haze)
+  wl = where(2*!pi*100.0/wavelength_haze lt 12000.0, nspec_haze)
   wavelength_haze = wavelength_haze(wl)
   real_haze = real_haze(wl)
   imaginary_haze = imaginary_haze(wl)
 
+  ; set commons
+  ri_wavelength = wavelength_haze
+  ri_real = real_haze
+  ri_imaginary = imaginary_haze 
+  nspec = nspec_haze
+endif
+
+if (do_volc eq 1) then begin
+   nheader1 = 16
+   nheader2 = 5
+   header1 = strarr(nheader1)
+   header2 = strarr(nheader2)
+   nspec_volc = 227
+   data_real =  fltarr(8, nspec_volc)
+   data_imag =  fltarr(8, nspec_volc)
+
+   wavelength_volc = fltarr(nspec_volc)
+   real_volc = fltarr(nspec_volc)
+   imaginary_volc = fltarr(nspec_volc)
+
+  
+   OPENR,lun,VOLC_PW1975_REFRACT_FILE,/Get_lun
+   READF,lun,header1
+   READF,lun,data_real
+   READF,lun,header2
+   READF,lun,data_imag
+   FREE_LUN,lun
+
+   wavelength_volc(*) = data_real(1,*)
+   real_volc(*) = data_real(5,*)     ; 75% wtpct
+   imaginary_volc(*) = data_imag(5,*) ; 75% wtpct
+
+   wavelength_volc(*) = reverse(wavelength_volc)
+   real_volc(*) = reverse(real_volc)
+   imaginary_volc(*) = reverse(imaginary_volc)
+
+   ; set commons
+   ri_wavelength = wavelength_volc
+   ri_real = real_volc
+   ri_imaginary = imaginary_volc
+   nspec = nspec_volc
+   ;print, ri_wavelength, ri_real, ri_imaginary
+   ;stop
 endif
 
 
@@ -220,10 +286,12 @@ angle = fltarr(ncarma_elems)  ;; set to 0
 ;;--------------------------------
 ;;-------  define elements -------
 ;;--------------------------------
+
 ;; Titan haze particles ;;
 if (do_haze eq 1) then begin
   e1=0
-  is_fractal(e1) = 1          ; 1 for mean field fractal, 0 for mie
+  do_miess = "FALSE"  & do_miess_bool = 0 ; do coreshell?
+  is_fractal(e1) = 1         ; 1 for mean field fractal, 0 for mie
   rho_particle(e1) = 0.64     ; [g cm-3] haze particle density
   ncarma_bins(e1) = 40        ; number of carma bins
   rmin(e1) = 1.0e-7           ; minimum particle size [cm] 
@@ -231,6 +299,20 @@ if (do_haze eq 1) then begin
   rmassmin(e1) = 4.0/3.0*!pi*(rmin(e1)^3.0)*rho_particle(e1)    ;[g] mass of smallest bin
   vrfact(e1) = ((3.0/2.0/!pi/(rmrat(e1)+1.0))^(1.0/3.0))*(rmrat(e1)^(1.0/3.0)-1.0) ;; volume ratio factor
 
+  ; more fractal stuff defined after ncarma_bins
+  nmon     = fltarr(ncarma_elems, ncarma_bins) 
+  df       = fltarr(ncarma_elems, ncarma_bins)
+  rf       = fltarr(ncarma_elems, ncarma_bins)
+  alpha    = fltarr(ncarma_elems, ncarma_bins)
+  rmon_vec = fltarr(ncarma_elems, ncarma_bins)
+
+  
+  ;; fractal assumptions
+  rmon(e1) = 50.0e-7 ; monomer size
+  alpha(e1) = 1.0    ; fractal packing coefficient
+  xv(e1) = 1.0
+  angle(e1) = 0.0
+  
 ; original style
 ; rmrat = 2.5
 ; ncarma_bins = 40
@@ -239,32 +321,37 @@ if (do_haze eq 1) then begin
 ; rmrat = 3.3
 ; ncarma_bins = 30
 
+endif
 
-  ; define carma bin level properties
-  dr = fltarr(ncarma_elems, ncarma_bins)    ;[um] vector containing the width of each bin in um 
-  bin_radius = fltarr(ncarma_elems, ncarma_bins)  ;[cm] equivalent spherical mass
-  bin_mass = fltarr(ncarma_elems, ncarma_bins)    ;[g] bin mass
+if (do_volc eq 1) then begin
+   e1 = 0
+   do_miess = "FALSE"  & do_miess_bool = 0 ; do coreshell?
+   is_fractal(e1) = 0       ; 1 for mean field fractal, 0 for mie
+   rho_particle(e1) = 1.7   ; [g cm-3] haze particle density
+   ncarma_bins(e1) = 1      ; number of carma bins
+;   rmin(e1) = 1.0e-7         ; minimum particle size [cm]
+   rmin(e1) = volc_radii         ; minimum particle size [1 micron = 1.0e-4 cm]
+   rmrat(e1) = 1.0           ; ratio of bin masses
+   rmassmin(e1) = 4.0/3.0*!pi*(rmin(e1)^3.0)*rho_particle(e1) ;[g] mass of smallest bin
+   vrfact(e1) = ((3.0/2.0/!pi/(rmrat(e1)+1.0))^(1.0/3.0))*(rmrat(e1)^(1.0/3.0)-1.0) ;; volume ratio factor
+   ;no fractal properties set
+endif
 
-  ;; quantities defined for elems x bins
-  for ib=0, ncarma_bins(e1)-1 do begin
+; define carma bin level properties
+dr = fltarr(ncarma_elems, ncarma_bins)    ;[um] vector containing the width of each bin in um 
+bin_radius = fltarr(ncarma_elems, ncarma_bins)  ;[cm] equivalent spherical mass
+bin_mass = fltarr(ncarma_elems, ncarma_bins)    ;[g] bin mass
+
+;; quantities defined for elems x bins
+for ib=0, ncarma_bins(e1)-1 do begin
     bin_mass(e1,ib)=rmassmin(e1)*rmrat(e1)^(ib)
     bin_radius(e1,ib)=((3.0*bin_mass(ib))/(4.0*!pi*rho_particle(e1)))^(1.0/3)     ;[cm]
     dr(e1,ib)=vrfact(e1)*(bin_mass(e1,ib)/rho_particle(e1))^(1.0/3.0)*(1.0e4) ;[um] bin width, 1.0e4 converts cm to um 
-  endfor
+endfor
 
-  if (is_fractal eq 1) then begin
-    nmon     = fltarr(ncarma_elems, ncarma_bins)
-    df       = fltarr(ncarma_elems, ncarma_bins)
-    rf       = fltarr(ncarma_elems, ncarma_bins)
-    alpha    = fltarr(ncarma_elems, ncarma_bins)
-    rmon_vec = fltarr(ncarma_elems, ncarma_bins)
 
-    ;; fractal assumptions
-    rmon(e1) = 50.0e-7 ; monomer size
-    alpha(e1) = 1.0    ; fractal packing coefficient
-    xv(e1) = 1.0
-    angle(e1) = 0.0
-    do_miess = "FALSE"  & do_miess_bool = 0 ; do coreshell?
+; construct the bin parameters
+if (is_fractal eq 1) then begin
 
     print, "Fractal Aggregate Mean Field Approximation"
     print, "ib+1, bin_radius(e1,ib), nmon(e1,ib), df(e1,ib), rf(e1,ib), rmon(e1)"
@@ -294,19 +381,17 @@ if (do_haze eq 1) then begin
       endif
         print, ib+1, bin_radius(e1,ib), nmon(e1,ib), df(e1,ib), rf(e1,ib), rmon(e1)
     endfor
-  endif else begin
+endif else begin
     print, "Spherical/Mie"
     print, "ib+1, bin_radius(e1,ib)"
     for ib=0, ncarma_bins(e1)-1 do begin
       print, ib+1, bin_radius(e1,ib)
     endfor
-  endelse
-
+endelse
 
 print, "Examine CARMA bin structure before continuing..."
 stop
-endif
-;; /Titan haze particles
+
 
 
 ;;----------------------------------------------------------------------
@@ -322,6 +407,7 @@ n_newgrid = (wavenum_edge(n_elements(wavenum_edge)-1)-wavenum_edge(0))+1
 newgrid = findgen(n_newgrid)+wavenum_edge(0)+1
 newgrid = 1.0e4/newgrid
 
+
 ;refractive indices on interp grid
 rfi_real_intex = fltarr(ncarma_elems, n_elements(newgrid))
 rfi_imag_intex = fltarr(ncarma_elems, n_elements(newgrid))
@@ -330,8 +416,16 @@ rfi_imag_intex = fltarr(ncarma_elems, n_elements(newgrid))
 rfi_real = fltarr(ncarma_elems, n_elements(newgrid))
 rfi_imag = fltarr(ncarma_elems, n_elements(newgrid))
 
-rfi_real_intex(ie,*) = interpol(real_haze,      wavelength_haze,  newgrid)
-rfi_imag_intex(ie,*) = interpol(imaginary_haze, wavelength_haze,  newgrid)
+rfi_real_intex(ie,*) = interpol(ri_real,     ri_wavelength,  newgrid)
+rfi_imag_intex(ie,*) = interpol(ri_imaginary, ri_wavelength,  newgrid)
+
+;fix to zero for bad values
+for j = 0, n_elements(newgrid)-1 do begin
+    ;print, j, rfi_real_intex(ie,j), rfi_imag_intex(ie,j)
+    ;if (rfi_real_intex(ie,j) lt 0.0) then rfi_real_intex(ie,j) = 1.0e-20
+    if (rfi_imag_intex(ie,j) lt 0.0) then rfi_imag_intex(ie,j) = 1.0e-6
+endfor
+
 
 qsum=0
 for j = 0, nwgrid-2 do begin
@@ -357,10 +451,10 @@ if (do_optical_calc eq 1) then begin
   G_out    = fltarr(ncarma_elems, ncarma_bins, nwgrid-1)
 
   ;optical properties on input optical constant grid
-  Kext = fltarr(ncarma_elems, ncarma_bins, nw_haze)
-  Qext = fltarr(ncarma_elems, ncarma_bins, nw_haze)
-  W    = fltarr(ncarma_elems, ncarma_bins, nw_haze)
-  G    = fltarr(ncarma_elems, ncarma_bins, nw_haze)
+  Kext = fltarr(ncarma_elems, ncarma_bins, nspec)
+  Qext = fltarr(ncarma_elems, ncarma_bins, nspec)
+  W    = fltarr(ncarma_elems, ncarma_bins, nspec)
+  G    = fltarr(ncarma_elems, ncarma_bins, nspec)
 
   ; calculate optical properties
   ; loop over elements
@@ -474,10 +568,13 @@ if (do_optical_calc eq 1) then begin
  for ie=0,ncarma_elems-1 do begin
     for ib=0, ncarma_bins(ie)-1 do begin
       for j=0,nwgrid-2 do begin
-        if (G(ie,ib,j) gt 1.0000) then G(ie,ib,j) = 1.0
+         if (G(ie,ib,j) ge 1.0000) then G(ie,ib,j) = 0.9999
+         if (W(ie,ib,j) ge 1.0000) then W(ie,ib,j) = 0.9999
      endfor
    endfor
  endfor
+
+ 
 
 
   ; set outputs
@@ -593,11 +690,11 @@ if (do_plot_refract eq 1) then  begin
          xtitle="wavelength (microns)", $
          ytitle="refractive indices (n)" ;, $                    
 
-  if (do_haze eq 1) then begin
-    oplot, wavelength_haze, real_haze, color=90, thick=2, linestyle=0
-    oplot, wavelength_haze, real_haze, color=90, psym=1, symsize=1, thick=2
+;  if (do_haze eq 1) then begin
+    oplot, ri_wavelength, ri_real, color=90, thick=2, linestyle=0
+    oplot, ri_wavelength, ri_real, color=90, psym=1, symsize=1, thick=2
     oplot, wavelength_mid(*), rfi_real(0,*), color=240, psym=4, symsize=2, thick=2
-  endif
+;  endif
 
   if  (plot_ps eq 1) then begin 
     device, /close
@@ -633,11 +730,17 @@ if (do_plot_refract eq 1) then  begin
          xtitle="wavelength (microns)", $
          ytitle="refractive indices (i)" ;, $                    
 
-  if (do_haze eq 1) then begin
-    oplot, wavelength_haze, imaginary_haze, color=90, thick=2, linestyle=2
-    oplot, wavelength_haze, imaginary_haze, color=90, psym=1, symsize=1, thick=2
+;  if (do_haze eq 1) then begin
+    oplot, ri_wavelength, ri_imaginary, color=90, thick=2, linestyle=2
+    oplot, ri_wavelength, ri_imaginary, color=90, psym=1, symsize=1, thick=2
     oplot, wavelength_mid(*), rfi_imag(0,*), color=240, psym=4, symsize=2, thick=2
-  endif
+;  endif
+
+;  if (do_volc eq 1) then begin
+;    oplot, wavelength_volc, imaginary_volc, color=90, thick=2, linestyle=2
+;    oplot, wavelength_volc, imaginary_volc, color=90, psym=1, symsize=1, thick=2
+;    oplot, wavelength_mid(*), rfi_imag(0,*), color=240, psym=4, symsize=2, thick=2
+;  endif
 
 
 
@@ -658,7 +761,7 @@ endif
 if (do_plot_qwg eq 1) then  begin
 
   ; select index of radii to plot data
-  rcarma_select = 25 ;99
+  rcarma_select = plot_radii_index - 1
 
   ;-------  plot QEXT ----------
   if (plot_ps eq 1) then begin
@@ -685,14 +788,15 @@ if (do_plot_qwg eq 1) then  begin
          xtitle="wavelength (microns)", $
          ytitle="Qext" ;, $                    
 
-   if (do_haze eq 1) then begin
-     print, "rhaze: ", bin_radius(rcarma_select)
+;   if (do_haze eq 1) then begin
+     print, "radii: ", bin_radius(rcarma_select)
      ie=0
      oplot, wavelength_mid(*),  Qext_out(ie, rcarma_select, *), color=240, psym=1, symsize=1, thick=2
      oplot, wavelength_mid(*),  Qext_out(ie, rcarma_select, *), color=90, thick=2, linestyle=0
-     xyouts, 0.65, 0.95, "rcarma = "+string(bin_radius(rcarma_select))+" microns", /normal, size=1
-   endif
+     xyouts, 0.65, 0.95, "radii = "+string(1.0e4*bin_radius(rcarma_select))+" microns", /normal, size=1
+;   endif
 
+   
    if  (plot_ps eq 1) then begin 
      device, /close
    endif else begin
@@ -725,13 +829,13 @@ if (do_plot_qwg eq 1) then  begin
          xtitle="wavelength(microns)", $
          ytitle="single scattering albedo" ;, $                    
 
-   if (do_haze eq 1) then begin
-     print, "rhaze: ", bin_radius(rcarma_select)
+;   if (do_haze eq 1) then begin
+     print, "radii: ", bin_radius(rcarma_select)
      ie=0
      oplot, wavelength_mid(*), W_out(ie, rcarma_select, *), color=240, psym=1, symsize=1, thick=2
      oplot, wavelength_mid(*), W_out(ie, rcarma_select, *), color=90, thick=2, linestyle=0
-     xyouts, 0.65, 0.95, "rcarma = "+string(bin_radius(rcarma_select))+" microns", /normal, size=1
-   endif
+     xyouts, 0.65, 0.95, "radii = "+string(1.0e4*bin_radius(rcarma_select))+" microns", /normal, size=1
+;   endif
 
    if  (plot_ps eq 1) then begin 
      device, /close
@@ -766,12 +870,12 @@ if (do_plot_qwg eq 1) then  begin
          xtitle="wavelength (microns)", $
          ytitle="asymmetry parameter" ;, $                    
 
-   if (do_haze eq 1) then begin
-     print, "rhaze: ", bin_radius(rcarma_select)
+;   if (do_haze eq 1) then begin
+     print, "radii: ", bin_radius(rcarma_select)
      oplot, wavelength_mid, G_out(ie, rcarma_select, *), color=240, psym=1, symsize=1, thick=2
      oplot, wavelength_mid, G_out(ie, rcarma_select, *), color=90, thick=2, linestyle=0
-     xyouts, 0.65, 0.95, "rhaze = "+string(bin_radius(rcarma_select))+" microns", /normal, size=1
-   endif
+     xyouts, 0.65, 0.95, "radii = "+string(1.0e4*bin_radius(rcarma_select))+" microns", /normal, size=1
+;   endif
 
    if  (plot_ps eq 1) then begin 
      device, /close

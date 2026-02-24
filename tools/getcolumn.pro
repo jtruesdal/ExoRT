@@ -13,42 +13,38 @@ pro getcolumn
 ;------------------------------------------------
 
 ;set gravity accordingly for your planet!
-GRAV = 9.80616
-
-no_csky=0
-
+;GRAV = 9.80616
+;GRAV= 3.711
+GRAV = 0.93*9.80616
+  
+no_csky=1
 do_plot = 1
 do_override = 1
 
+;choose latitude and longitude coords
+lat_choice = -2.0
+lon_choice = 180.0
+
+;latVC=100
+;lonVC=200
+
+
+;-----------------
+
 ;override values
 ;set via volume mixing ratios
-co2vmr_o = 0.0
+co2vmr_o = 1.0
 ch4vmr_o = 0.0
-h2vmr_o = 0.2
-n2vmr_o = 1.0 - co2vmr_o - ch4vmr_o - h2vmr_o
+h2vmr_o = 0.0
+n2vmr_o = 0.0
 o2vmr_o = 0.0
 o3vmr_o = 0.0
 
 ;nominal profiles to farm
-;fname_in ='/scratch/summit/wolfet/archive/t3300_s1400_p22.1392_4bar/atm/hist/t3300_s1400_p22.1392_4bar.cam.h0.0048-12.nc'
-;fname_in = '/scratch/summit/wolfet/archive/t3300_s1400_p22.1392_4bar/atm/hist/t3300_s1400_p22.1392_4bar.cam.h0.0048-12.nc'
-fname_in = '/projects/wolfet/EXO_ANALYSIS/CO2_360ppm.cam.h0.avg.nc'
-;fname_in = '/Users/wolfe/desktop/atmospheres/simulations/jgra2015/control_L45_NSPLIT4.cam.h0.avg.nc'
-;fname_in = '/projects/wolfet/EXO_ANALYSIS/SOLAR112.5_L45_NSPLIT4.cam.h0.avg.nc'
-;fname_in = '/projects/wolfet/EXO_ANALYSIS/SOLAR119_L45_NSPLIT32.cam.h0.avg.nc'
-;fname_in ='/projects/wolfet/EXO_ANALYSIS/CO2_0.8bar_s75.cam.h0.avg.nc'
-;fname_in = '/projects/wolfet/EXO_ANALYSIS/CO2_0.8bar_s75.cam.h0.avg.nc'
-;fname_in = '/scratch/summit/wolfet/archive/test/atm/hist/test.cam.h0.0001-01-01-01800.nc'
-;fname_in ='/scratch/summit/wolfet/archive/trappist1e_1barN2_0.4barCO2_aqua/atm/hist/trappist1e_1barN2_0.4barCO2_aqua.cam.h0.0061-01-01-01800.nc'
-;fname_in = '/scratch/summit/wolfet/archive/trappist1e_1barN2_1barCO2_aqua/atm/hist/trappist1e_1barN2_1barCO2_aqua.cam.h0.0061-01-01-01800.nc'
-;fname_in = '/scratch/summit/wolfet/archive/rtbuild_test/atm/hist/rtbuild_test_ORIG.cam.h0.0061-01-01-01800.nc'
-;fname_in = '/scratch/summit/wolfet/archive/trappist1e_1barN2_0.4barCO2_aqua/atm/hist/trappist1e_1barN2_0.4barCO2_aqua.cam.h0.0061-01-01-01800.nc'
-;fname_in = '/scratch/summit/wolfet/archive/trappist1e_1barCO2_aqua/atm/hist/trappist1e_1barCO2_aqua.cam.h0.0061-01-01-01800.nc'
-;fname_in = '/scratch/summit/wolfet/archive/trappist1f_5barCO2_aqua/atm/hist/trappist1f_5barCO2_aqua.cam.h0.0010-12.nc'
-;fname_in = '/projects/wolfet/trappist-1/simulations/trappist1e_1barN2_0.01barCO2_aqua.cam.h0.avg.nc'
-;fname_in = '/projects/wolfet/trappist-1/simulations/trappist1e_4barCO2_aqua.cam.h0.avg.nc'
-;fname_in = '/projects/wolfet/EXO_ANALYSIS/co2_forcing_co2_forcing_3.2bar_s75.cam.h0.0001-01-01-00000.nc'
-;fname_in = '/scratch/summit/wolfet/archive/test_n42h2o_aqi/atm/hist/test_n42h2o_aqi.cam.h0.0001-01-01-01800.nc' 
+;fname_in = '/gpfsm/dnb33/etwolf/junk/exort_test_output.nc'
+;fname_in = '/gpfsm/dnb33/etwolf/junk/exoRT_MARS_test_1.cam.h1i.0001-01-01-03600-2_cdf5.nc'
+;fname_in = '/gpfsm/dnb33/etwolf/cesm_scratch/archive/mars_0.1barCO2_dry_tpw_nocond/atm/hist/mars_0.1barCO2_dry_tpw_nocond.cam.h0.0030-12.nc'
+fname_in = '/gpfsm/dnb05/projects/p54/users/etwolf/thai_project/Ben2_ExoCAM_L51_KitchenSink.nc'
 
 print, fname_in
 ncid=ncdf_open(fname_in, /nowrite)
@@ -65,16 +61,17 @@ ncdf_varget,ncid,'hybm',hybm
 ;ncdf_varget,ncid,'ALDIR',ALDIR
 ;ncdf_varget,ncid,'ALDIF',ALDIF
 ncdf_varget,ncid,'PS',PS
-ncdf_varget,ncid,'P0',P0
+;ncdf_varget,ncid,'P0',P0
+
 ncdf_varget,ncid,'T',T       
 ncdf_varget,ncid,'TS',TS     
 if (no_csky ne 1) then begin
-;ncdf_varget,ncid,'QRSC',QRSC    ;shortwave hearting rate, K/s
-;ncdf_varget,ncid,'QRLC',QRLC    ;longwave heating rate, K/s  
-ncdf_varget,ncid,'FDLC',FDLC  ;clearsky downwelling longwave   
-ncdf_varget,ncid,'FULC',FULC  ;clearsky upwelling longwave
-ncdf_varget,ncid,'FDSC',FDSC  ;clearsky downwelling shortwave
-ncdf_varget,ncid,'FUSC',FUSC  ;clearsky upwelling shortwave 
+  ncdf_varget,ncid,'QRSC',QRSC    ;shortwave hearting rate, K/s
+  ncdf_varget,ncid,'QRLC',QRLC    ;longwave heating rate, K/s  
+  ncdf_varget,ncid,'FDLC',FDLC  ;clearsky downwelling longwave   
+  ncdf_varget,ncid,'FULC',FULC  ;clearsky upwelling longwave
+  ncdf_varget,ncid,'FDSC',FDSC  ;clearsky downwelling shortwave
+  ncdf_varget,ncid,'FUSC',FUSC  ;clearsky upwelling shortwave 
 endif
 ncdf_varget,ncid,'FDL',FDL  ;clearsky downwelling longwave   
 ncdf_varget,ncid,'FUL',FUL  ;clearsky upwelling longwave
@@ -84,9 +81,9 @@ ncdf_varget,ncid,'QRS',QRS  ;shortwave heatng rate
 ncdf_varget,ncid,'QRL',QRL  ;longwave heatng rate
 ncdf_varget,ncid,'Z3',Z3 ;geopotential height, m
 ncdf_varget,ncid,'Q',Q   ;kg/kg, specific humidity
-ncdf_varget,ncid,'m_Q_c',m_Q_c  ;kg/m2, mass per layer
-ncdf_varget,ncid,'m_CH4_c',m_CH4_c  ;kg/m2, mass per layer
-ncdf_varget,ncid,'m_CO2_c',m_CO2_c  ;kg/m2, mass per layer
+;ncdf_varget,ncid,'m_Q_c',m_Q_c  ;kg/m2, mass per layer
+;ncdf_varget,ncid,'m_CH4_c',m_CH4_c  ;kg/m2, mass per layer
+;ncdf_varget,ncid,'m_CO2_c',m_CO2_c  ;kg/m2, mass per layer
 ;ncdf_varget,ncid,'rad_CO2',rad_CO2  ;kg/kg
 ;ncdf_varget,ncid,'rad_CH4',rad_CH4  ;kg/kg
 ;ncdf_varget,ncid,'rad_Q',rad_Q  ;kg/kg
@@ -94,35 +91,7 @@ ncdf_varget,ncid,'co2vmr',co2vmr
 ncdf_varget,ncid,'ch4vmr',ch4vmr
 ncdf_close,ncid
 
-nlon=n_elements(lon)
-nlat=n_elements(lat)
-nlev=n_elements(lev)
-nilev=n_elements(ilev)
 
-if (no_csky eq 1) then begin
-FULC = fltarr(nlon,nlat,nlev+1) & FULC(*,*,*) = 0.0
-FDLC = fltarr(nlon,nlat,nlev+1) & FDLC(*,*,*) = 0.0
-FUSC = fltarr(nlon,nlat,nlev+1) & FUSC(*,*,*) = 0.0
-FDSC = fltarr(nlon,nlat,nlev+1) & FDSC(*,*,*) = 0.0
-QRLC = fltarr(nlon,nlat,nlev) & QRLC(*,*,*) = 0.0
-QRSC = fltarr(nlon,nlat,nlev) & QRSC(*,*,*) = 0.0
-endif
-;kludge
-QRLC = fltarr(nlon,nlat,nlev) & QRLC(*,*,*) = 0.0
-QRSC = fltarr(nlon,nlat,nlev) & QRSC(*,*,*) = 0.0
-
-levP=fltarr(nlon,nlat,nlev)
-ilevP=fltarr(nlon,nlat,nilev)
-levZ=fltarr(nlon,nlat,nlev)
-ilevZ=fltarr(nlon,nlat,nilev)
-
-hybrid2pressure,nlon,nlat,nlev,PS,P0,hyam,hybm,hyai,hybi,levP,ilevP
-hybrid2height,nlon,nlat,nilev,PS,P0,hyai,hybi,hyam,hybm,T,levZ,ilevz
-
-
-;choose latitude and longitude coords
-lat_choice = -42.0
-lon_choice = 180.0
 
 latVC=where(lat eq lat_choice)
 lonVC=where(lon eq lon_choice)
@@ -139,16 +108,35 @@ if (lonVC eq -1) then begin
   GOTO, FINISH
 endif
 
-;to do
-;calculat TINT exactly as it is calculated in the RT
-;convert weight
+print, "longitude ,", lon(lonVC)
+print, "lattitude ,", lat(latVC)
 
+P0 = PS(lonVC,latVC)
 
-;calculate PDEL
-pdel_temp = fltarr(nlev)
-for i=0,nlev-1 do begin
- pdel_temp(i) = ilevP(lonVC,latVC,i+1) - ilevP(lonVC,latVC,i)
-endfor
+nlon=n_elements(lon)
+nlat=n_elements(lat)
+nlev=n_elements(lev)
+nilev=n_elements(ilev)
+
+if (no_csky eq 1) then begin
+  FULC = fltarr(nlon,nlat,nlev+1) & FULC(*,*,*) = 0.0
+  FDLC = fltarr(nlon,nlat,nlev+1) & FDLC(*,*,*) = 0.0
+  FUSC = fltarr(nlon,nlat,nlev+1) & FUSC(*,*,*) = 0.0
+  FDSC = fltarr(nlon,nlat,nlev+1) & FDSC(*,*,*) = 0.0
+  QRLC = fltarr(nlon,nlat,nlev) & QRLC(*,*,*) = 0.0
+  QRSC = fltarr(nlon,nlat,nlev) & QRSC(*,*,*) = 0.0
+endif
+
+;kludge
+QRLC = fltarr(nlon,nlat,nlev) & QRLC(*,*,*) = 0.0
+QRSC = fltarr(nlon,nlat,nlev) & QRSC(*,*,*) = 0.0
+
+print, nlon,nlat,nlev, nilev
+levP=fltarr(nlon,nlat,nlev)
+ilevP=fltarr(nlon,nlat,nilev)
+levZ=fltarr(nlon,nlat,nlev)
+ilevZ=fltarr(nlon,nlat,nilev)
+
 
 ; calculate mixing ratios, etc
 ; mass of the atmosphere
@@ -165,11 +153,8 @@ cpco2 = 0.846e3
 cpch4 = 2.226e3
 cph2 = 14.32e3
 
-;standard, if no override.  Currently cesm does not output H2vmr
-n2vmr=1.0-co2vmr-ch4vmr
-
-mwdry = n2vmr*mwn2 + co2vmr*mwco2 + ch4vmr*mwch4 ;+ arvmr*mwar 
-cpdry = n2vmr*cpn2 + co2vmr*cpco2 + ch4vmr*cpch4 ;+ arvmr*cpar
+;mwdry = n2vmr*mwn2 + co2vmr*mwco2 + ch4vmr*mwch4 ;+ arvmr*mwar 
+;cpdry = n2vmr*cpn2 + co2vmr*cpco2 + ch4vmr*cpch4 ;+ arvmr*cpar
 
 mass_atm = fltarr(nlev)
 co2mmr_temp = fltarr(nlev) & co2mmr_temp(*) = 0.    &    co2vmr_temp = fltarr(nlev) & co2vmr_temp(*) = 0.
@@ -179,35 +164,22 @@ h2mmr_temp = fltarr(nlev) & h2mmr_temp(*) = 0.      &    h2vmr_temp = fltarr(nle
 o2mmr_temp = fltarr(nlev) & o2mmr_temp(*) = 0.      &    o2vmr_temp = fltarr(nlev) & o2vmr_temp(*) = 0.
 o3mmr_temp = fltarr(nlev) & o3mmr_temp(*) = 0.      &    o3vmr_temp = fltarr(nlev) & o3vmr_temp(*) = 0.
 
-for i=0, nlev-1 do begin
-  mass_atm(i) = pdel_temp(i)/grav
-  ;co2mmr_temp(i) = m_CO2_c(lonVC,latVC,i)/mass_atm(i)
-  ;ch4mmr_temp(i) = m_CH4_c(lonVC,latVC,i)/mass_atm(i)
-  ;n2mmr_temp(i) = 1.0 - CO2mmr_temp(i)-CH4mmr_temp(i)
-  ;co2mmr_temp(i) = rad_CO2(lonVC,latVC,i)  ;dry
-  ;ch4mmr_temp(i) = rad_CH4(lonVC,latVC,i)  ;dry
-  ;n2mmr_temp(i) = 1.0 - CO2mmr_temp(i)-CH4mmr_temp(i) ;dry
-  co2mmr_temp(i) = co2vmr*mwco2/mwdry
-  ch4mmr_temp(i) = ch4vmr*mwch4/mwdry
-  n2mmr_temp(i) = 1.0 - CO2mmr_temp(i)-CH4mmr_temp(i) ;dry
-endfor
+;for i=0, nlev-1 do begin
+;  mass_atm(i) = pdel_temp(i)/grav
+;  ;co2mmr_temp(i) = m_CO2_c(lonVC,latVC,i)/mass_atm(i)
+;  ;ch4mmr_temp(i) = m_CH4_c(lonVC,latVC,i)/mass_atm(i)
+;  ;n2mmr_temp(i) = 1.0 - CO2mmr_temp(i)-CH4mmr_temp(i)
+;  ;co2mmr_temp(i) = rad_CO2(lonVC,latVC,i)  ;dry
+;  ;ch4mmr_temp(i) = rad_CH4(lonVC,latVC,i)  ;dry
+;  ;n2mmr_temp(i) = 1.0 - CO2mmr_temp(i)-CH4mmr_temp(i) ;dry
+;  co2mmr_temp(i) = co2vmr*mwco2/mwdry
+;  ch4mmr_temp(i) = ch4vmr*mwch4/mwdry
+;  n2mmr_temp(i) = 1.0 - CO2mmr_temp(i)-CH4mmr_temp(i) ;dry
+;endfor
 
 ;is this correct?
 h2ommr_temp = fltarr(nlev) & h2ommr_temp(*) = Q(lonVC,latVC,*)  ;specific humidity
 ;h2ommr_temp = fltarr(nlev) & h2ommr_temp(*) = rad_Q(lonVC,latVC,*)
-
-;calculate TINT
-tint_temp = fltarr(nilev)
-tint_temp(nilev-1) = TS(lonVC,latVC)
-tint_temp(0) = T(lonVC,latVC,0) 
-for k=1,nlev-1 do begin
-  dy = ( alog10(ilevP(lonVC,latVC,k)) - alog10(levP(lonVC,latVC,k)) ) / $
-       ( alog10(levP(lonVC,latVC,k-1)) - alog10(levP(lonVC,latVC,k))) 
-  tint_temp(k) = T(lonVC,latVC,k) - dy*(T(lonVC,latVC,k) - T(lonVC,latVC,k-1))
-  t_print = T(lonVC,latVC,k)
-  tint_print = tint_temp(k)
-endfor
-;tint_temp(0) = T(lonVC,latVC,0) + (T(lonVC,latVC,0) - T(lonVC,latVC,1))*0.5
 
 if (do_override eq 1) then begin
   co2vmr_temp(*) = co2vmr_o
@@ -219,22 +191,57 @@ if (do_override eq 1) then begin
 
   mwdry = n2vmr_o*mwn2 + co2vmr_o*mwco2 + ch4vmr_o*mwch4 +  h2vmr_o*mwh2  ;+ o2vmr_o*mwo2 + o3vmr_o*mwo3   
 
-
-
-   n2mmr_temp(*)  = n2vmr_temp(*)*mwn2/mwdry
-   h2mmr_temp(*)  = h2vmr_temp(*)*mwh2/mwdry
-   co2mmr_temp(*)  = co2vmr_temp(*)*mwco2/mwdry
-   ch4mmr_temp(*)  = ch4vmr_temp(*)*mwch4/mwdry
-;   o2mmr_temp(*)  = o2vmr_temp(*)*mwo2/mwdry
-;   o3mmr_temp(*)  = o3vmr_temp(*)*mwo3/mwdry
-  
-   cpdry = n2mmr_temp(0)*cpn2 + co2mmr_temp(0)*cpco2 + ch4mmr_temp(0)*cpch4 +  h2mmr_temp(0)*cph2  ;+ o2vmr_o*cpo2 + o3vmr_o*cpo3   
+  n2mmr_temp(*)  = n2vmr_temp(*)*mwn2/mwdry
+  h2mmr_temp(*)  = h2vmr_temp(*)*mwh2/mwdry
+  co2mmr_temp(*)  = co2vmr_temp(*)*mwco2/mwdry
+  ch4mmr_temp(*)  = ch4vmr_temp(*)*mwch4/mwdry
+  ;o2mmr_temp(*)  = o2vmr_temp(*)*mwo2/mwdry
+  ;o3mmr_temp(*)  = o3vmr_temp(*)*mwo3/mwdry
+     
+  cpdry = n2mmr_temp(0)*cpn2 + co2mmr_temp(0)*cpco2 + ch4mmr_temp(0)*cpch4 +  h2mmr_temp(0)*cph2  ;+ o2vmr_o*cpo2 + o3vmr_o*cpo3   
 
 endif
+
+G=GRAV
+R=8.314462/(mwdry/1000.)
+hybrid2pressure,nlon,nlat,nlev,PS,P0,hyam,hybm,hyai,hybi,levP,ilevP
+hybrid2height,nlon,nlat,nlev,nilev,PS,P0,hyai,hybi,hyam,hybm,T,G,R,levZ,ilevz
+
+
+; scale pressures
+;pscale=100.
+;levP(*,*,*)  = levP(*,*,*)*pscale
+;;ilevP(*,*,*) = ilevP(*,*,*)*pscale
+;PS(*,*) = PS(*,*)*pscale
+;T(*,*,*) = T(*,*,*) + 50.
+;TS(*,*,*) = TS(*,*,*) + 100.
+
+;calculate TINT
+tint_temp = fltarr(nilev)
+tint_temp(0) = T(lonVC,latVC,0) 
+tint_temp(nilev-1) = TS(lonVC,latVC)
+;tint_temp(nilev-1) = T(lonVC,latVC, nlev-1)
+for k=1,nlev-1 do begin
+  dy = ( alog10(ilevP(lonVC,latVC,k)) - alog10(levP(lonVC,latVC,k)) ) / $
+       ( alog10(levP(lonVC,latVC,k-1)) - alog10(levP(lonVC,latVC,k))) 
+  tint_temp(k) = T(lonVC,latVC,k) - dy*(T(lonVC,latVC,k) - T(lonVC,latVC,k-1))
+  t_print = T(lonVC,latVC,k)
+  tint_print = tint_temp(k)
+endfor
+;tint_temp(0) = T(lonVC,latVC,0) + (T(lonVC,latVC,0) - T(lonVC,latVC,1))*0.5
+
+
+;calculate PDEL
+pdel_temp = fltarr(nlev)
+for i=0,nlev-1 do begin
+ pdel_temp(i) = ilevP(lonVC,latVC,i+1) - ilevP(lonVC,latVC,i)
+endfor
+
 
 
 ;-- set final output values --
 TS_out = TS(lonVC,latVC)
+;TS_out = T(lonVC, latVC, nlev-1)
 PS_out = PS(lonVC,latVC)
 TMID_out = fltarr(nlev)   & TMID_out(*) = T(lonVC,latVC,*)
 TINT_out = fltarr(nilev) & TINT_out(*) = tint_temp(*)
@@ -253,10 +260,10 @@ N2MMR_out = fltarr(nlev)  & N2MMR_out(*) = n2mmr_temp(*)
 ;ALDIF_out = ALDIF(lonVC, latVC)
 ;ASDIR_out = ASDIR(lonVC, latVC)
 ;ASDIF_out = ASDIF(lonVC, latVC)
-ALDIR_out = 0.25
-ALDIF_out = 0.25
-ASDIR_out = 0.25
-ASDIF_out = 0.25
+ALDIR_out = 0.5
+ALDIF_out = 0.5
+ASDIR_out = 0.5
+ASDIF_out = 0.5
 MW_OUT = mwdry
 CP_OUT = cpdry
 ;; diagnostic outputs for comparison later
@@ -278,7 +285,7 @@ COSZRS_out = 0.5 ;; only matters for a solar computation
 
 
 if (do_plot eq 1) then begin
-  plot, tmid_out,pmid_out/100., /ylog, yrange=[5000.,0.01], psym=4,symsize=1.0, ystyle=1, xrange=[100,400], xstyle=1
+  plot, tmid_out,pmid_out/100., /ylog, yrange=[1000.,0.000001], psym=4,symsize=1.0, ystyle=1, xrange=[150,350], xstyle=1
   oplot, tmid_out,pmid_out/100., linestyle=1
   oplot, tint_out,pint_out/100., psym=1, symsize=1.0
   oplot, tint_out,pint_out/100., linestyle=0
@@ -287,6 +294,10 @@ endif
 print, "ts", TS_OUT
 print, "ps", PS_OUT
 print, "nlev", nlev
+
+print, tmid_out
+print, pmid_out
+
 
 ; ----- create RTprofle_in.nc --------
 
@@ -410,3 +421,4 @@ NCDF_CLOSE, id
 FINISH:
 
 end
+   
