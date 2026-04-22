@@ -114,13 +114,14 @@ module exoplanet_mod
    !!real(r8), public, parameter :: exo_sday = 86400.0_r8 * exo_ndays    !! sidereal period, for synchronous rotator
    !!real(r8), public, parameter :: exo_sday = 86400.0_r8 * exo_ndays / (1._r8 + exo_ndays/exo_porb)  !! sidereal period [sec]
 
-   !! Mars Orbital
-   real(r8), public, parameter :: exo_planet_radius   = 3.38992e6_R8     !! radius ~ m
-   real(r8), public, parameter :: exo_surface_gravity = 3.711_R8         !! gravity ~ m/s^2
-   real(r8), public, parameter :: exo_diurnal = 88800.0_R8               !! Length of diurnal period, solar-day ~ s
-   real(r8), public, parameter :: exo_ndays  = exo_diurnal/86400.0_R8    !! scaler to number of Earth days
-   real(r8), public, parameter :: exo_porb = 687.0_R8                    !! orbital period in Earth Days, for obliquity/eccentricity cycles
-   real(r8), public, parameter :: exo_sday = 88642.663_R8                !! sidereal period
+   !! Mars Orbital Dont need these exo_xxx values now in cam drv_in namelist like other orbitals
+
+   !   real(r8), public, parameter :: exo_planet_radius   = 3.38992e6_R8     !! radius ~ m
+   !   real(r8), public, parameter :: exo_surface_gravity = 3.711_R8         !! gravity ~ m/s^2
+   !   real(r8), public, parameter :: exo_diurnal = 88800.0_R8               !! Length of diurnal period, solar-day ~ s
+   !   real(r8), public, parameter :: exo_ndays  = exo_diurnal/86400.0_R8    !! scaler to number of Earth days
+   !   real(r8), public, parameter :: exo_porb = 687.0_R8                    !! orbital period in Earth Days, for obliquity/eccentricity cycles
+   !   real(r8), public, parameter :: exo_sday = 88642.663_R8                !! sidereal period
 
    !! Examples
    !! Earth
